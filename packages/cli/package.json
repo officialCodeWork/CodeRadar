@@ -1,0 +1,26 @@
+{
+  "name": "@coderadar/cli",
+  "version": "0.1.0",
+  "description": "CodeRadar CLI — scan a React codebase into a lineage graph and query it.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "coderadar": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@coderadar/core": "workspace:*",
+    "@coderadar/parser-react": "workspace:*",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.7.0"
+  }
+}
