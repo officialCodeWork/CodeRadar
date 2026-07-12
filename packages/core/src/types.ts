@@ -1,8 +1,14 @@
 /**
- * The CodeRadar lineage graph.
+ * The CodeRadar lineage graph — schema v2.
  *
  * Parsers (React/TS today; Python/Go later) emit this shape. Agents consume it.
  * The graph is plain JSON so any language can produce or query it.
+ *
+ * v2 changes (TRACKER step 0.1):
+ * - InstanceNode: a component *as rendered at one call site*. Data attribution is
+ *   per instance, never merged into the definition (failure mode C1).
+ * - Evidence + Confidence: every query answer carries both (D2).
+ * - EdgeCondition: flag/role/branch conditions on edges (B5, G5).
  */
 
 /** Where a node lives in the codebase. */
@@ -15,17 +21,28 @@ export interface SourceLocation {
   endLine: number;
 }
 
-export type NodeKind = "component" | "hook" | "data-source" | "state" | "event";
+export type NodeKind =
+  | "component"
+  | "hook"
+  | "instance"
+  | "data-source"
+  | "state"
+  | "event";
 
 export interface BaseNode {
-  /** Stable id, unique within a graph: `${kind}:${file}#${name}` */
+  /** Stable id, unique within a graph. See nodeId()/instanceId(). */
   id: string;
   kind: NodeKind;
   name: string;
   loc: SourceLocation;
+  /**
+   * Degradation markers, e.g. "incomplete", "depth-limited",
+   * "unresolved-prop-handler", "external-definition". Absent when clean.
+   */
+  flags?: string[];
 }
 
-/** A React component — the thing a screenshot shows. */
+/** A React component definition — the code, not a usage. */
 export interface ComponentNode extends BaseNode {
   kind: "component";
   /** Named or default export, if exported. */
@@ -38,8 +55,29 @@ export interface ComponentNode extends BaseNode {
    * primary signal for matching a screenshot to a component.
    */
   renderedText: string[];
-  /** Names of components this component renders in its JSX. */
+  /** Names of components this component renders in its JSX (deduplicated). */
   rendersComponents: string[];
+}
+
+/**
+ * A component as rendered at one specific call site.
+ *
+ * The same <DataTable> definition rendered on the Users page and the Invoices
+ * page yields two instances — and per-instance data attribution (Phase 2.2)
+ * is what lets each report a different API.
+ */
+export interface InstanceNode extends BaseNode {
+  kind: "instance";
+  /** Id of the ComponentNode this instantiates. */
+  definitionId: string;
+  /**
+   * Enclosing instance in the render tree. Null until the cross-file instance
+   * tree is built (Phase 2.1); the enclosing *definition* is available via the
+   * incoming `renders` edge meanwhile.
+   */
+  parentInstanceId: string | null;
+  /** Props with statically-known string values at this call site. */
+  staticProps: Record<string, string>;
 }
 
 /** A custom hook — often the bridge between a component and its data. */
@@ -87,34 +125,83 @@ export interface EventNode extends BaseNode {
   handler: string | null;
 }
 
-export type LineageNode = ComponentNode | HookNode | DataSourceNode | StateNode | EventNode;
+export type LineageNode =
+  | ComponentNode
+  | InstanceNode
+  | HookNode
+  | DataSourceNode
+  | StateNode
+  | EventNode;
 
 export type EdgeKind =
-  | "renders" // component -> component
+  | "renders" // component|instance -> instance (definition-level until Phase 2.1)
+  | "instance-of" // instance -> component definition
   | "uses-hook" // component -> hook, hook -> hook
   | "fetches-from" // component | hook -> data-source
+  | "provides-data" // data-source -> instance (via a prop; Phase 2.2)
   | "reads-state" // component | hook -> state
+  | "writes-state" // data-source | event -> state (Phase 2.4)
   | "handles" // component -> event
   | "triggers"; // event -> data-source | state (handler causes a fetch / state write)
+
+/** A statically-detected condition guarding an edge (feature flag, role, branch). */
+export interface EdgeCondition {
+  kind: "flag" | "role" | "branch" | "response";
+  /** Source text of the condition, e.g. `isEnabled("new-billing")`. */
+  expression: string;
+}
 
 export interface LineageEdge {
   from: string;
   to: string;
   kind: EdgeKind;
+  /** Prop name for provides-data edges; handler name for triggers. */
+  via?: string;
+  condition?: EdgeCondition;
+}
+
+/** How a query answer was derived. Every candidate carries at least one. */
+export interface Evidence {
+  kind: "text-match" | "structure" | "edge-chain" | "alias" | "correction";
+  /** Human/agent-readable derivation, e.g. `"team members" matched renderedText`. */
+  detail: string;
+  loc?: SourceLocation;
+}
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
+export interface Confidence {
+  level: ConfidenceLevel;
+  /** 0–1. Level thresholds are provisional until Phase 4.5 calibration. */
+  score: number;
+}
+
+/** Scan provenance — which code this graph describes. */
+export interface GraphMeta {
+  /** Commit SHA of the scanned tree; null when not a git repo. */
+  commitSha: string | null;
+  /** True when the working tree had uncommitted changes at scan time. */
+  dirty: boolean;
 }
 
 export interface LineageGraph {
   /** Schema version for forward compatibility. */
-  version: 1;
+  version: 2;
   /** Absolute path of the scanned root at generation time. */
   root: string;
   generatedAt: string;
   generator: string;
+  meta?: GraphMeta;
   nodes: LineageNode[];
   edges: LineageEdge[];
 }
 
-/** Build the canonical node id. */
-export function nodeId(kind: NodeKind, file: string, name: string): string {
+/** Build the canonical node id for definition-level nodes. */
+export function nodeId(kind: Exclude<NodeKind, "instance">, file: string, name: string): string {
   return `${kind}:${file}#${name}`;
+}
+
+/** Build the canonical instance id — one per JSX call site. */
+export function instanceId(file: string, line: number, name: string): string {
+  return `instance:${file}:${line}#${name}`;
 }

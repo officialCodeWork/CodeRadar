@@ -1,12 +1,25 @@
 /**
  * Query helpers over a LineageGraph — the primitives an agent composes to go
  * from "text seen in a screenshot" to "component" to "everything that feeds it".
+ *
+ * Every function returns a QueryResult envelope: ranked candidates with
+ * evidence and confidence, or an honest ambiguous/declined.
  */
 
+import {
+  ambiguous,
+  type Candidate,
+  confidenceFromScore,
+  declined,
+  ok,
+  type QueryResult,
+} from "./result.js";
 import type {
   ComponentNode,
   DataSourceNode,
   EventNode,
+  Evidence,
+  InstanceNode,
   LineageEdge,
   LineageGraph,
   LineageNode,
@@ -15,49 +28,98 @@ import type {
 
 export interface ComponentMatch {
   component: ComponentNode;
-  /** How many of the query terms matched this component's rendered text. */
-  score: number;
+  /** Call sites of this component, when known. */
+  instances: InstanceNode[];
   matchedText: string[];
 }
 
 /**
  * Rank components by overlap between `terms` (words/phrases read off a
- * screenshot) and each component's statically rendered text.
+ * screenshot or ticket) and each component's statically rendered text.
+ *
+ * Returns `ambiguous` when several components tie at the top score,
+ * `declined("no-signal")` when nothing matches at all.
  */
-export function matchComponentsByText(graph: LineageGraph, terms: string[]): ComponentMatch[] {
+export function matchComponentsByText(
+  graph: LineageGraph,
+  terms: string[],
+): QueryResult<ComponentMatch> {
   const needles = terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 1);
-  const matches: ComponentMatch[] = [];
+  if (needles.length === 0) return declined("no-signal");
+
+  const instancesByDefinition = groupInstances(graph);
+  const scored: Array<{ match: ComponentMatch; score: number; evidence: Evidence[] }> = [];
 
   for (const node of graph.nodes) {
     if (node.kind !== "component") continue;
     const haystack = node.renderedText.map((t) => t.toLowerCase());
     const matchedText: string[] = [];
+    const evidence: Evidence[] = [];
     for (const needle of needles) {
       const hit = haystack.find((h) => h.includes(needle) || needle.includes(h));
-      if (hit !== undefined) matchedText.push(hit);
+      if (hit !== undefined) {
+        matchedText.push(hit);
+        evidence.push({
+          kind: "text-match",
+          detail: `"${needle}" matched rendered text "${hit}"`,
+          loc: node.loc,
+        });
+      }
     }
     if (matchedText.length > 0) {
-      matches.push({ component: node, score: matchedText.length, matchedText });
+      scored.push({
+        match: {
+          component: node,
+          instances: instancesByDefinition.get(node.id) ?? [],
+          matchedText,
+        },
+        score: matchedText.length / needles.length,
+        evidence,
+      });
     }
   }
 
-  return matches.sort((a, b) => b.score - a.score);
+  if (scored.length === 0) return declined("no-signal");
+
+  scored.sort(
+    (a, b) => b.score - a.score || a.match.component.name.localeCompare(b.match.component.name),
+  );
+  const candidates: Candidate<ComponentMatch>[] = scored.map((s) => ({
+    value: s.match,
+    confidence: confidenceFromScore(s.score),
+    evidence: s.evidence,
+  }));
+
+  const top = scored[0];
+  const tied = top === undefined ? [] : scored.filter((s) => s.score === top.score);
+  if (tied.length > 1) {
+    const names = tied.map((s) => s.match.component.name).join(", ");
+    return ambiguous(
+      candidates,
+      `Multiple components match equally well (${names}). ` +
+        `Which file or page is the screenshot from, or what other text is visible?`,
+    );
+  }
+  return ok(candidates);
 }
 
 export interface Lineage {
   component: ComponentNode;
+  /** The instance the trace started from, when an instance id was given. */
+  instance: InstanceNode | null;
   dataSources: DataSourceNode[];
   state: StateNode[];
   events: EventNode[];
-  /** Hooks and child components on the path, in discovery order. */
+  /** Hooks, instances, and child components on the path, in discovery order. */
   via: LineageNode[];
 }
 
 /**
- * Walk outgoing edges from a component (transitively, through hooks and child
- * components) and collect every data source, state node, and event that feeds it.
+ * Walk outgoing edges from a component or instance (transitively, through
+ * hooks, instances, and child components) and collect every data source,
+ * state node, and event that feeds it.
  */
-export function traceLineage(graph: LineageGraph, componentId: string): Lineage | null {
+export function traceLineage(graph: LineageGraph, id: string): QueryResult<Lineage> {
   const byId = new Map<string, LineageNode>(graph.nodes.map((n) => [n.id, n]));
   const out = new Map<string, LineageEdge[]>();
   for (const e of graph.edges) {
@@ -66,17 +128,40 @@ export function traceLineage(graph: LineageGraph, componentId: string): Lineage 
     else out.set(e.from, [e]);
   }
 
-  const start = byId.get(componentId);
-  if (start === undefined || start.kind !== "component") return null;
+  const start = byId.get(id);
+  if (start === undefined) return declined("not-found");
 
-  const lineage: Lineage = { component: start, dataSources: [], state: [], events: [], via: [] };
-  const seen = new Set<string>([componentId]);
-  const queue: string[] = [componentId];
+  let component: ComponentNode;
+  let instance: InstanceNode | null = null;
+  if (start.kind === "component") {
+    component = start;
+  } else if (start.kind === "instance") {
+    const definition = byId.get(start.definitionId);
+    if (definition === undefined || definition.kind !== "component") return declined("not-found");
+    instance = start;
+    component = definition;
+  } else {
+    return declined("invalid-target");
+  }
+
+  const lineage: Lineage = {
+    component,
+    instance,
+    dataSources: [],
+    state: [],
+    events: [],
+    via: [],
+  };
+  const startId = instance !== null ? instance.id : component.id;
+  const seen = new Set<string>([startId, component.id]);
+  const queue: string[] = [startId, component.id];
+  let edgesWalked = 0;
 
   while (queue.length > 0) {
-    const id = queue.shift();
-    if (id === undefined) break;
-    for (const edge of out.get(id) ?? []) {
+    const currentId = queue.shift();
+    if (currentId === undefined) break;
+    for (const edge of out.get(currentId) ?? []) {
+      edgesWalked += 1;
       if (seen.has(edge.to)) continue;
       seen.add(edge.to);
       const node = byId.get(edge.to);
@@ -94,6 +179,7 @@ export function traceLineage(graph: LineageGraph, componentId: string): Lineage 
           break;
         case "hook":
         case "component":
+        case "instance":
           lineage.via.push(node);
           queue.push(node.id);
           break;
@@ -101,5 +187,27 @@ export function traceLineage(graph: LineageGraph, componentId: string): Lineage 
     }
   }
 
-  return lineage;
+  const evidence: Evidence[] = [
+    {
+      kind: "edge-chain",
+      detail:
+        `Walked ${edgesWalked} edges from ${startId}: ` +
+        `${lineage.dataSources.length} data sources, ${lineage.state.length} state nodes, ` +
+        `${lineage.events.length} events via ${lineage.via.length} intermediate nodes`,
+      loc: component.loc,
+    },
+  ];
+  // Static edge traversal is reliable; per-instance attribution sharpens in Phase 2.2.
+  return ok([{ value: lineage, confidence: confidenceFromScore(0.9), evidence }]);
+}
+
+function groupInstances(graph: LineageGraph): Map<string, InstanceNode[]> {
+  const byDefinition = new Map<string, InstanceNode[]>();
+  for (const node of graph.nodes) {
+    if (node.kind !== "instance") continue;
+    const list = byDefinition.get(node.definitionId);
+    if (list) list.push(node);
+    else byDefinition.set(node.definitionId, [node]);
+  }
+  return byDefinition;
 }

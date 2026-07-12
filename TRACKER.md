@@ -5,8 +5,9 @@
 ## Status
 
 - **Current phase:** 0 — Foundations
-- **Next step:** 0.1 — Schema v2 (instance nodes, evidence, confidence)
-- **Gates passed:** none yet (Gate 0 is the first)
+- **Next step:** 0.2 — Eval harness + first fixtures
+- **Done:** 0.1
+- **Gates passed:** none yet (Gate 0 completes with 0.4)
 
 ## What CodeRadar is
 
@@ -42,7 +43,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 Everything else depends on getting the schema and the measurement loop right first.
 The v0.1 schema is definition-only, which is *wrong* for C1 — fix before building on it.
 
-### [ ] 0.1 Schema v2 — instances, evidence, confidence
+### [x] 0.1 Schema v2 — instances, evidence, confidence
 **Failure modes:** C1 (schema half), D2 (schema half), A5, B5 (edge conditions)
 **Build:** rework `packages/core/src/types.ts`:
 - `InstanceNode` — `{ id, kind: "instance", definitionId, parentInstanceId | null, loc, staticProps: Record<string, string> }`. One per JSX call site of a project component. Id: `instance:<file>:<line>#<DefName>`.

@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  type Candidate,
+  type ComponentMatch,
   type LineageGraph,
   matchComponentsByText,
   traceLineage,
@@ -32,7 +34,7 @@ program
       counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
     }
     console.log(`Scanned ${path.resolve(dir)}`);
-    for (const [kind, count] of counts) console.log(`  ${kind}: ${count}`);
+    for (const [kind, count] of [...counts].sort()) console.log(`  ${kind}: ${count}`);
     console.log(`  edges: ${graph.edges.length}`);
     console.log(`Graph written to ${opts.out}`);
   });
@@ -44,23 +46,23 @@ program
   .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
   .action((terms: string[], opts: { graph: string }) => {
     const graph = loadGraph(opts.graph);
-    const matches = matchComponentsByText(graph, terms);
-    if (matches.length === 0) {
-      console.log("No components matched.");
+    const result = matchComponentsByText(graph, terms);
+    if (result.status === "declined") {
+      console.log(`No components matched (${result.declineReason}).`);
       return;
     }
-    for (const match of matches.slice(0, 10)) {
-      console.log(
-        `${match.component.name}  (${match.component.loc.file}:${match.component.loc.line})  score=${match.score}`,
-      );
-      console.log(`  matched: ${match.matchedText.join(" | ")}`);
+    if (result.status === "ambiguous") {
+      console.log(`Ambiguous — ${result.disambiguation}\n`);
+    }
+    for (const candidate of result.candidates.slice(0, 10)) {
+      printMatchCandidate(candidate);
     }
   });
 
 program
   .command("trace")
   .description("Trace a component to every data source, state, and event that feeds it")
-  .argument("<component>", "component name or node id")
+  .argument("<component>", "component name, definition id, or instance id")
   .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
   .action((component: string, opts: { graph: string }) => {
     const graph = loadGraph(opts.graph);
@@ -72,13 +74,15 @@ program
       process.exitCode = 1;
       return;
     }
-    const lineage = traceLineage(graph, node.id);
-    if (lineage === null) {
-      console.error(`Not a component: ${node.id}`);
+    const result = traceLineage(graph, node.id);
+    if (result.status === "declined" || result.candidates[0] === undefined) {
+      console.error(`Cannot trace ${node.id} (${result.declineReason ?? "no result"})`);
       process.exitCode = 1;
       return;
     }
-    console.log(`${lineage.component.name}  (${lineage.component.loc.file}:${lineage.component.loc.line})`);
+    const lineage = result.candidates[0].value;
+    const where = lineage.instance ?? lineage.component;
+    console.log(`${lineage.component.name}  (${where.loc.file}:${where.loc.line})`);
     if (lineage.dataSources.length > 0) {
       console.log("  data sources:");
       for (const ds of lineage.dataSources) {
@@ -98,9 +102,25 @@ program
       }
     }
     if (lineage.via.length > 0) {
-      console.log(`  via: ${lineage.via.map((v) => v.name).join(", ")}`);
+      const labels = lineage.via.map((v) =>
+        v.kind === "instance" ? `${v.name}@${v.loc.file}:${v.loc.line}` : v.name,
+      );
+      console.log(`  via: ${labels.join(", ")}`);
     }
+    console.log(`  confidence: ${result.candidates[0].confidence.level}`);
   });
+
+function printMatchCandidate(candidate: Candidate<ComponentMatch>): void {
+  const match = candidate.value;
+  console.log(
+    `${match.component.name}  (${match.component.loc.file}:${match.component.loc.line})  ` +
+      `confidence=${candidate.confidence.level} (${candidate.confidence.score.toFixed(2)})`,
+  );
+  console.log(`  matched: ${match.matchedText.join(" | ")}`);
+  for (const instance of match.instances) {
+    console.log(`  instance: ${instance.loc.file}:${instance.loc.line}`);
+  }
+}
 
 function loadGraph(file: string): LineageGraph {
   if (!fs.existsSync(file)) {

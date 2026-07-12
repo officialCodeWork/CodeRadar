@@ -2,6 +2,8 @@ import path from "node:path";
 
 import {
   type DataSourceKind,
+  instanceId,
+  type InstanceNode,
   type LineageEdge,
   type LineageGraph,
   type LineageNode,
@@ -13,6 +15,8 @@ import {
   type CallExpression,
   type FunctionDeclaration,
   type FunctionExpression,
+  type JsxOpeningElement,
+  type JsxSelfClosingElement,
   Node,
   Project,
   type SourceFile,
@@ -35,6 +39,17 @@ interface Declaration {
   exportName: string | null;
   file: string;
   loc: SourceLocation;
+}
+
+/** A JSX call site of a (possibly project-local) component, recorded per file. */
+interface PendingInstance {
+  /** Tag head, e.g. "UserCard" for <UserCard .../> or <Ns.UserCard/>. */
+  tagName: string;
+  loc: SourceLocation;
+  staticProps: Record<string, string>;
+  /** Node id of the enclosing component/hook declaration. */
+  ownerId: string;
+  file: string;
 }
 
 const COMPONENT_NAME = /^[A-Z]/;
@@ -68,6 +83,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
 
   const nodes = new Map<string, LineageNode>();
   const edges: LineageEdge[] = [];
+  const pendingInstances: PendingInstance[] = [];
   const addEdge = (edge: LineageEdge): void => {
     if (!edges.some((e) => e.from === edge.from && e.to === edge.to && e.kind === edge.kind)) {
       edges.push(edge);
@@ -95,6 +111,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
           renderedText: extractRenderedText(decl.fn),
           rendersComponents: extractRenderedComponents(decl.fn),
         });
+        collectInstanceSites(decl, id, file, pendingInstances);
       } else {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
@@ -103,10 +120,10 @@ export function scanReact(options: ScanOptions): LineageGraph {
     }
   }
 
-  resolveCrossFileEdges(nodes, addEdge);
+  materializeInstances(pendingInstances, nodes, addEdge);
 
   return {
-    version: 1,
+    version: 2,
     root,
     generatedAt: new Date().toISOString(),
     generator: "@coderadar/parser-react@0.1.0",
@@ -400,30 +417,70 @@ function stateVariableName(call: CallExpression): string | null {
   return null;
 }
 
+/** Record every JSX call site of a capitalized component within a declaration body. */
+function collectInstanceSites(
+  decl: Declaration,
+  ownerId: string,
+  file: string,
+  pendingInstances: PendingInstance[],
+): void {
+  const record = (el: JsxOpeningElement | JsxSelfClosingElement): void => {
+    const head = el.getTagNameNode().getText().split(".")[0];
+    if (head === undefined || !COMPONENT_NAME.test(head)) return;
+    const staticProps: Record<string, string> = {};
+    for (const attr of el.getAttributes()) {
+      if (!Node.isJsxAttribute(attr)) continue;
+      const init = attr.getInitializer();
+      if (init !== undefined && Node.isStringLiteral(init)) {
+        staticProps[attr.getNameNode().getText()] = init.getLiteralValue();
+      }
+    }
+    pendingInstances.push({ tagName: head, loc: locOf(el, file), staticProps, ownerId, file });
+  };
+  for (const el of decl.fn.getDescendantsOfKind(SyntaxKind.JsxOpeningElement)) record(el);
+  for (const el of decl.fn.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement)) record(el);
+}
+
 /**
- * Second pass: resolve `unresolved-hook:useX` edge targets and `rendersComponents`
- * names against the declared node set (by name, across files).
+ * Second pass: turn call sites whose tag resolves to a project component
+ * definition (matched by name, across files) into InstanceNodes, wired
+ * owner --renders--> instance --instance-of--> definition.
+ *
+ * parentInstanceId stays null until the cross-file instance tree lands in
+ * Phase 2.1; the enclosing definition is reachable via the renders edge.
  */
-function resolveCrossFileEdges(
+function materializeInstances(
+  pendingInstances: PendingInstance[],
   nodes: Map<string, LineageNode>,
   addEdge: (edge: LineageEdge) => void,
 ): void {
-  const byName = new Map<string, LineageNode[]>();
+  const definitionsByName = new Map<string, string>();
   for (const node of nodes.values()) {
-    const list = byName.get(node.name);
-    if (list) list.push(node);
-    else byName.set(node.name, [node]);
+    if (node.kind === "component") definitionsByName.set(node.name, node.id);
   }
 
-  for (const node of nodes.values()) {
-    if (node.kind === "component") {
-      for (const childName of node.rendersComponents) {
-        const target = byName.get(childName)?.find((n) => n.kind === "component");
-        if (target !== undefined && target.id !== node.id) {
-          addEdge({ from: node.id, to: target.id, kind: "renders" });
-        }
-      }
+  for (const pending of pendingInstances) {
+    const definitionId = definitionsByName.get(pending.tagName);
+    if (definitionId === undefined || definitionId === pending.ownerId) continue;
+
+    let id = instanceId(pending.file, pending.loc.line, pending.tagName);
+    let suffix = 1;
+    while (nodes.has(id)) {
+      suffix += 1;
+      id = `${instanceId(pending.file, pending.loc.line, pending.tagName)}~${suffix}`;
     }
+    const instance: InstanceNode = {
+      id,
+      kind: "instance",
+      name: pending.tagName,
+      loc: pending.loc,
+      definitionId,
+      parentInstanceId: null,
+      staticProps: pending.staticProps,
+    };
+    nodes.set(id, instance);
+    addEdge({ from: pending.ownerId, to: id, kind: "renders" });
+    addEdge({ from: id, to: definitionId, kind: "instance-of" });
   }
 }
 
