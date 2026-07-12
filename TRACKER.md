@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 0 — Foundations
-- **Next step:** 0.2 — Eval harness + first fixtures
-- **Done:** 0.1
+- **Next step:** 0.3 — Graph storage & versioning
+- **Done:** 0.1, 0.2
 - **Gates passed:** none yet (Gate 0 completes with 0.4)
 
 ## What CodeRadar is
@@ -58,7 +58,7 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 - Demo-app scan shows `UserCard` with 1 definition + 1 instance (parent `UserList`).
 - `matchComponentsByText` / `traceLineage` return `QueryResult` envelopes.
 
-### [ ] 0.2 Eval harness + first fixtures
+### [x] 0.2 Eval harness + first fixtures
 **Failure modes:** infrastructure for all; first fixtures C1, A4
 **Build:** `eval/run.ts` (a workspace package `@coderadar/eval`):
 - Discovers `eval/fixtures/*/`, scans each `app/` dir, diffs the graph + query results against `golden.json` (format in testing-strategy.md, including `forbidden` entries).
