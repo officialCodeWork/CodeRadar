@@ -1,0 +1,57 @@
+{
+  "failureMode": "C1",
+  "note": "The headline case: one shared DataTable, two pages, two different APIs. Attribution must be per instance. The forbidden entries catch the poison answer a definition-level trace would give (both endpoints attributed to every usage).",
+  "expect": {
+    "components": [
+      { "name": "DataTable", "instances": 2 },
+      { "name": "UsersPage", "instances": 0 },
+      { "name": "InvoicesPage", "instances": 0 }
+    ],
+    "attributions": [
+      {
+        "component": "DataTable",
+        "instanceAt": "pages/UsersPage.tsx",
+        "endpoints": ["/api/users"],
+        "expectedFail": "phase-2: per-instance attribution requires prop-flow (step 2.2)"
+      },
+      {
+        "component": "DataTable",
+        "instanceAt": "pages/InvoicesPage.tsx",
+        "endpoints": ["/api/invoices"],
+        "expectedFail": "phase-2: per-instance attribution requires prop-flow (step 2.2)"
+      },
+      {
+        "component": "UsersPage",
+        "endpoints": ["/api/users"]
+      },
+      {
+        "component": "InvoicesPage",
+        "endpoints": ["/api/invoices"]
+      }
+    ],
+    "forbidden": [
+      {
+        "component": "DataTable",
+        "instanceAt": "pages/UsersPage.tsx",
+        "endpoint": "/api/invoices",
+        "note": "poison: invoices API attributed to the users-page table"
+      },
+      {
+        "component": "DataTable",
+        "instanceAt": "pages/InvoicesPage.tsx",
+        "endpoint": "/api/users",
+        "note": "poison: users API attributed to the invoices-page table"
+      },
+      {
+        "component": "UsersPage",
+        "endpoint": "/api/invoices",
+        "note": "poison: cross-page endpoint bleed at definition level"
+      }
+    ],
+    "queries": [
+      { "terms": ["All Users"], "status": "ok", "top": "UsersPage" },
+      { "terms": ["All Invoices"], "status": "ok", "top": "InvoicesPage" },
+      { "terms": ["No records found"], "status": "ok", "top": "DataTable" }
+    ]
+  }
+}

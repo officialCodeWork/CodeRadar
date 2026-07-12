@@ -48,27 +48,39 @@ eval/
 └── run.ts                          # runner: scan fixtures, diff vs golden, emit scorecard
 ```
 
-`golden.json` format (per fixture):
+`golden.json` format (per fixture; full contract in `eval/src/golden.ts`):
 
 ```json
 {
   "failureMode": "C1",
+  "app": "./app",
   "expect": {
     "components": [{ "name": "DataTable", "instances": 2 }],
     "attributions": [
-      { "instanceAt": "pages/Users.tsx", "endpoint": "/api/users" },
-      { "instanceAt": "pages/Invoices.tsx", "endpoint": "/api/invoices" }
+      { "component": "DataTable", "instanceAt": "pages/UsersPage.tsx",
+        "endpoints": ["/api/users"],
+        "expectedFail": "phase-2: per-instance attribution requires prop-flow (step 2.2)" }
     ],
     "forbidden": [
-      { "note": "definition-level attribution would claim DataTable calls both APIs",
-        "attribution": { "definition": "DataTable", "endpoint": "*" } }
+      { "component": "DataTable", "instanceAt": "pages/UsersPage.tsx",
+        "endpoint": "/api/invoices",
+        "note": "poison: invoices API attributed to the users-page table" }
+    ],
+    "queries": [
+      { "terms": ["Save"], "status": "ambiguous" },
+      { "terms": ["All Users"], "status": "ok", "top": "UsersPage" }
     ]
   }
 }
 ```
 
-`forbidden` entries catch the *specific wrong answer* each failure mode produces —
-passing isn't just finding the right edges, it's not emitting the poisonous ones.
+- `forbidden` entries catch the *specific wrong answer* each failure mode produces —
+  passing isn't just finding the right edges, it's not emitting the poisonous ones.
+  Forbidden checks never carry `expectedFail`: poison gates in every phase.
+- `expectedFail` (per check) gives xfail semantics: a failing check reports `xfail`
+  and doesn't gate; a *passing* check still carrying the marker reports
+  `unexpected-pass` and **does** gate — stale markers are removed the moment the
+  capability lands, so capability arrival is always an explicit, reviewed event.
 
 ## Metrics
 
@@ -103,7 +115,8 @@ ratchet upward as reality informs them):
 
 ## Monitoring direction over time
 
-- `eval/run.ts` appends every run's scorecard to `eval/history.jsonl` (committed weekly).
+- `pnpm eval -- --record` appends the run's summary to `eval/history.jsonl`
+  (recorded deliberately — e.g. at each step completion — and committed).
   A shrinking metric between phases is a **regression investigation**, not noise.
 - From Phase 4, the corrections store (G4) is periodically folded into `eval/tickets/` —
   real mismatches from the pipeline become permanent eval cases. This is the flywheel:

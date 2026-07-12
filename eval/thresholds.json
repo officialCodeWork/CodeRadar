@@ -1,0 +1,5 @@
+{
+  "maxFail": 0,
+  "maxUnexpectedPass": 0,
+  "minMatchAccuracy": 1.0
+}

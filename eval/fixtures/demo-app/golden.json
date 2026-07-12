@@ -1,0 +1,25 @@
+{
+  "failureMode": "baseline",
+  "note": "The bundled example app, kept green from day one. App source lives in examples/demo-app so the README quick-start and this fixture share one copy.",
+  "app": "../../../examples/demo-app/src",
+  "expect": {
+    "components": [
+      { "name": "UserList", "instances": 0 },
+      { "name": "UserCard", "instances": 1 }
+    ],
+    "attributions": [
+      {
+        "component": "UserList",
+        "endpoints": ["/api/users", "/api/users/${user.id}"]
+      },
+      {
+        "component": "UserCard",
+        "endpoints": ["/api/users/${user.id}"]
+      }
+    ],
+    "queries": [
+      { "terms": ["Team Members"], "status": "ok", "top": "UserList" },
+      { "terms": ["Remove member"], "status": "ok", "top": "UserCard" }
+    ]
+  }
+}
