@@ -1,74 +1,146 @@
-# CodeRadar
+# 📡 CodeRadar
 
-Static analysis toolkit that maps UI components to their data sources (APIs, state, events) — enabling AI agents to trace any screenshot back to the code and data behind it.
+> **Screenshot in. Full data lineage out.**
+> Static analysis that maps every UI component to the APIs, state, and events behind it — built for AI agents doing real development work.
 
-**The problem:** a Jira ticket has a screenshot of a broken screen. Which component is that? Where does its data come from? Today an engineer greps for the visible text, follows imports by hand, and reads hook bodies to find the API call. CodeRadar does that walk statically, once, and hands the result to an agent as a queryable graph.
+**Status:** pre-release · v0.1 proof of concept · [build plan](TRACKER.md)
+
+---
+
+## The problem
+
+A Jira ticket lands with a screenshot: *"the numbers on this table are wrong."*
+
+Before any fix can start, someone has to answer:
+
+1. **Which component is that?** — grep for visible text, hope it isn't behind an i18n key
+2. **Where does its data come from?** — follow imports, unwrap hooks, find the API call
+3. **What happens if I change it?** — who else renders this component? who else calls this API?
+
+An engineer does this walk by hand, every ticket. An AI dev agent can't do it reliably at all — it sees files, not the *lineage* connecting a pixel on screen to the endpoint that produced it.
+
+## What CodeRadar does
+
+CodeRadar scans a React codebase **once, statically** — no running app required — and produces a queryable **lineage graph**:
 
 ```
-Screenshot text ──find──▶ Component ──trace──▶ APIs · state · events
+        find                    trace                     impact
+Screenshot ──▶ Component instance ──▶ APIs · state · events ──▶ Blast radius
+  text                 │
+                       └─ per call site: the same <DataTable> on the Users page
+                          is fed by /api/users; on the Invoices page by /api/invoices
 ```
+
+It's designed as a **context-provider node for multi-agent development pipelines**: a ticket goes in, and a budgeted context bundle comes out — matched components with evidence, their data sources, the relevant user journeys, blast radius, tests, and git history. Every answer carries confidence and evidence; when the graph isn't sure, it says `ambiguous` and tells you what would disambiguate — it never hands your pipeline a confident guess.
 
 ## Quick start
 
 ```bash
-pnpm install && pnpm build
-
-# 1. Scan a React codebase into a lineage graph
-node packages/cli/dist/index.js scan ./my-app/src -o graph.json
-
-# 2. Find the component behind a screenshot (use text visible in the image)
-node packages/cli/dist/index.js find "Team Members" -g graph.json
-#   UserList  (components/UserList.tsx:4)  score=1
-
-# 3. Trace everything that feeds it
-node packages/cli/dist/index.js trace UserList -g graph.json
-#   UserList  (components/UserList.tsx:4)
-#     data sources:
-#       [fetch] GET /api/users  (hooks/useUsers.ts:14)
-#       [fetch] DELETE /api/users/${user.id}  (components/UserCard.tsx:5)
-#     state:
-#       [useState] users  (hooks/useUsers.ts:10)
-#     events:
-#       onClick → handleDelete  (components/UserCard.tsx:12)
-#     via: useUsers, UserCard
+git clone https://github.com/officialCodeWork/CodeRadar.git
+cd CodeRadar && pnpm install && pnpm build
 ```
 
-Try it on the bundled example: `node packages/cli/dist/index.js scan examples/demo-app/src`.
+**1 — Scan a React codebase into a lineage graph**
+
+```bash
+node packages/cli/dist/index.js scan ./my-app/src -o graph.json
+```
+
+**2 — Find the component behind a screenshot** (use any text visible in the image)
+
+```bash
+node packages/cli/dist/index.js find "Team Members" -g graph.json
+```
+```
+UserList  (components/UserList.tsx:4)  score=1
+  matched: team members
+```
+
+**3 — Trace everything that feeds it**
+
+```bash
+node packages/cli/dist/index.js trace UserList -g graph.json
+```
+```
+UserList  (components/UserList.tsx:4)
+  data sources:
+    [fetch] GET /api/users              (hooks/useUsers.ts:14)
+    [fetch] DELETE /api/users/${user.id} (components/UserCard.tsx:5)
+  state:
+    [useState] users    (hooks/useUsers.ts:10)
+    [useState] loading  (hooks/useUsers.ts:11)
+  events:
+    onClick → handleDelete  (components/UserCard.tsx:12)
+  via: useUsers, UserCard
+```
+
+Note the transitivity: `UserList` itself contains no fetch — the lineage flows through the `useUsers` hook and the `UserCard` child automatically.
+
+Try it immediately on the bundled example: `node packages/cli/dist/index.js scan examples/demo-app/src`
+
+## How it works
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                          CodeRadar                             │
+│                                                                │
+│   Parsers (language-specific)      Graph (language-agnostic)  │
+│  ┌───────────────┐                                             │
+│  │ parser-react  │──┐   ┌─────────────────────────────────┐   │
+│  │  (ts-morph)   │  │   │        LineageGraph (JSON)      │   │
+│  └───────────────┘  ├──▶│                                 │   │
+│  ┌───────────────┐  │   │  Component ──renders──▶ Component│   │
+│  │ parser-python │  │   │      │                          │   │
+│  │   (planned)   │──┤   │  fetches-from ──▶ DataSource    │   │
+│  └───────────────┘  │   │  reads-state  ──▶ State         │   │
+│  ┌───────────────┐  │   │  handles      ──▶ Event         │   │
+│  │  parser-go    │──┘   └─────────────────────────────────┘   │
+│  │   (planned)   │                      │                     │
+│  └───────────────┘                      ▼                     │
+│                          Query layer: find · trace · impact   │
+│                          (CLI · SDK · MCP server, planned)    │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Parsers are language-specific; the graph is not.** Every parser emits the same `LineageGraph` JSON, and any agent — Python, Go, TypeScript — consumes it without touching a parser. The planned backend parsers make endpoints a *join key*: `fetches-from: /api/users` in your React repo links to `serves: /api/users` in your FastAPI repo, closing the loop from pixel to handler.
 
 ## Packages
 
 | Package | Purpose |
 |---------|---------|
-| [`@coderadar/core`](packages/core) | The `LineageGraph` schema (plain JSON, language-agnostic) + query helpers (`matchComponentsByText`, `traceLineage`) |
-| [`@coderadar/parser-react`](packages/parser-react) | ts-morph–based parser: components, hooks, fetch/axios/react-query/swr calls, useState/useSelector/useContext, JSX event handlers, rendered text |
-| [`@coderadar/cli`](packages/cli) | `coderadar scan` / `find` / `trace` |
+| [`@coderadar/core`](packages/core) | The `LineageGraph` schema + query primitives (`matchComponentsByText`, `traceLineage`) |
+| [`@coderadar/parser-react`](packages/parser-react) | ts-morph static parser — components (incl. `memo`/`forwardRef`), hooks, `fetch`/`axios`/react-query/SWR endpoints, `useState`/`useSelector`/`useContext`, JSX event handlers, rendered-text extraction |
+| [`@coderadar/cli`](packages/cli) | `coderadar scan` · `find` · `trace` |
 
-## What the graph captures
+### What the graph captures
 
-- **ComponentNode** — file, export, props, *rendered text* (JSX text + placeholder/label/title/alt/aria-label — the screenshot-matching signal), child components
-- **DataSourceNode** — endpoint as written in source (template placeholders preserved), HTTP method, client kind (fetch / axios / react-query / swr)
-- **StateNode** — useState / useReducer / useContext / redux useSelector / zustand useStore
-- **EventNode** — `on*` JSX handlers and the functions they call
-- **Edges** — `renders`, `uses-hook`, `fetches-from`, `reads-state`, `handles`, `triggers`
+- **Components** — file, exports, props, child components, and *rendered text* (JSX text + `placeholder`/`label`/`title`/`alt`/`aria-label`) — the screenshot-matching signal
+- **Data sources** — endpoint as written in source (template placeholders preserved), HTTP method, client kind (fetch / axios / react-query / SWR)
+- **State** — `useState` / `useReducer` / `useContext` / redux `useSelector` / zustand `useStore`
+- **Events** — `on*` handlers and the functions they invoke
+- **Edges** — `renders` · `uses-hook` · `fetches-from` · `reads-state` · `handles` · `triggers`
 
-Lineage is transitive: `trace UserList` follows `UserList → useUsers → fetch("/api/users")` and `UserList → UserCard → DELETE` in one query.
+## Where this is going
 
-## Architecture
+The v0.1 PoC proves the chain on clean code. Real codebases fight back — endpoints behind wrapper clients, text behind i18n keys, handlers drilled through four layers of props, one shared component fed different APIs per page. We catalogued **53 ways this can fail** before writing the plan, and every phase of the build is gated by evals that measure exactly those failure modes.
 
-Parsers are language-specific; the graph is not. Any parser emits the same `LineageGraph` JSON, and any agent (Python, Go, TS) consumes it without touching the parsers.
+| Document | What's in it |
+|----------|--------------|
+| **[TRACKER.md](TRACKER.md)** | The build plan: 8 phases, 40 steps, acceptance criteria per step — read this first |
+| **[docs/failure-modes.md](docs/failure-modes.md)** | The failure catalog (IDs `A1`–`G8`) every step and eval fixture maps to |
+| **[docs/testing-strategy.md](docs/testing-strategy.md)** | Eval harness, golden fixtures, metrics (incl. *poison rate* — confidently-wrong answers), phase gates |
 
-Planned parsers: Python (FastAPI/Django routes) and Go (handlers) so backend endpoints join the same graph as the frontend components that call them — closing the loop from pixel to database.
+Milestones at a glance:
 
-## Roadmap & planning
+- **M2** — per-instance attribution: shared components correctly attributed per call site
+- **M3** — n-level user journeys, lazily expanded (cycles welcome)
+- **M4** — screenshot/text → ranked, calibrated, *honest* matches
+- **M5** — pluggable pipeline node: ticket in → budgeted context bundle out, over MCP
+- **M7** — full-stack lineage: pixel → backend handler (Python/Go parsers)
 
-CodeRadar is built as a context-provider node for a multi-agent development pipeline:
-Jira ticket in → context bundle (matched components, data lineage, journeys, blast radius) out.
+## Contributing
 
-- **[TRACKER.md](TRACKER.md)** — the phased build plan (8 phases, one step = one PR). Read this first.
-- **[docs/failure-modes.md](docs/failure-modes.md)** — the catalog of everything that can go wrong (IDs A1–G8); every plan step maps to the failure modes it addresses.
-- **[docs/testing-strategy.md](docs/testing-strategy.md)** — eval harness, per-failure-mode fixtures, metrics, and the per-phase gates that tell us whether we're on track.
-
-Current state: v0.1 proof of concept (this repo). Next: Phase 0 — schema v2 (instance nodes), eval harness, CI.
+The project follows a strict step discipline: one TRACKER step = one branch = one PR, and a step is done only when its acceptance criteria and eval gate pass. Found a new way for this to fail? That's a contribution — add it to [failure-modes.md](docs/failure-modes.md) with a fixture.
 
 ## License
 
