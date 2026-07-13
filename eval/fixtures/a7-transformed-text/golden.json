@@ -1,0 +1,13 @@
+{
+  "failureMode": "A7",
+  "note": "Runtime text transforms: screenshot shows 'SHOPPING CART' (CSS uppercase), '3 items in cart' (template literal), 'Total: $41.97'. Source has none of those exact strings. Normalization + template wildcards must bridge the gap.",
+  "expect": {
+    "components": [{ "name": "CartSummary", "instances": 0 }],
+    "queries": [
+      { "terms": ["SHOPPING CART"], "status": "ok", "top": "CartSummary" },
+      { "terms": ["3 items in cart"], "status": "ok", "top": "CartSummary" },
+      { "terms": ["Total: $41.97"], "status": "ok", "top": "CartSummary" },
+      { "terms": ["1 item in cart"], "status": "ok", "top": "CartSummary" }
+    ]
+  }
+}

@@ -55,8 +55,13 @@ export interface RenderedText {
   key?: string;
   /** i18n entries only: which locale this text belongs to. */
   locale?: string;
-  /** Condition source text when the text renders only in a branch (step 1.5). */
+  /** Condition source text when the text renders only in a branch. */
   branch?: string;
+  /**
+   * True when the text came from a template literal with runtime parts —
+   * unknown segments appear as `*` ("* items in cart") and match as wildcards.
+   */
+  template?: boolean;
 }
 
 /** A React component definition — the code, not a usage. */

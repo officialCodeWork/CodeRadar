@@ -1,0 +1,13 @@
+{
+  "failureMode": "A8",
+  "note": "Conditional branches: error/empty/admin states render text the happy path never shows. A screenshot of the error state must still find the component, and the branch condition rides along as evidence.",
+  "expect": {
+    "components": [{ "name": "OrdersPanel", "instances": 0 }],
+    "queries": [
+      { "terms": ["Could not load orders"], "status": "ok", "top": "OrdersPanel" },
+      { "terms": ["No orders yet"], "status": "ok", "top": "OrdersPanel" },
+      { "terms": ["Export orders"], "status": "ok", "top": "OrdersPanel" },
+      { "terms": ["Recent orders"], "status": "ok", "top": "OrdersPanel" }
+    ]
+  }
+}

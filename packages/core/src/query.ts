@@ -14,6 +14,7 @@ import {
   ok,
   type QueryResult,
 } from "./result.js";
+import { normalizeText, textMatches } from "./text.js";
 import type {
   ComponentNode,
   DataSourceNode,
@@ -44,7 +45,7 @@ export function matchComponentsByText(
   graph: LineageGraph,
   terms: string[],
 ): QueryResult<ComponentMatch> {
-  const needles = terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 1);
+  const needles = terms.map((t) => normalizeText(t)).filter((t) => t.length > 1);
   if (needles.length === 0) return declined("no-signal");
 
   const instancesByDefinition = groupInstances(graph);
@@ -55,14 +56,17 @@ export function matchComponentsByText(
     const matchedText: string[] = [];
     const evidence: Evidence[] = [];
     for (const needle of needles) {
-      const hit = node.renderedText.find((entry) => {
-        const haystack = entry.text.toLowerCase();
-        return haystack.includes(needle) || needle.includes(haystack);
-      });
+      const hit = node.renderedText.find((entry) =>
+        textMatches(normalizeText(entry.text), needle),
+      );
       if (hit !== undefined) {
         matchedText.push(hit.text.toLowerCase());
         const provenance =
-          hit.source === "i18n" ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})` : "";
+          hit.source === "i18n"
+            ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})`
+            : hit.branch !== undefined
+              ? ` (renders only when ${hit.branch})`
+              : "";
         evidence.push({
           kind: "text-match",
           detail: `"${needle}" matched rendered text "${hit.text}"${provenance}`,
