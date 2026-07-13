@@ -25,7 +25,7 @@ import {
   type VariableDeclaration,
 } from "ts-morph";
 
-import { fetchMethod, resolveEndpoint, type ResolvedEndpoint } from "./endpoint.js";
+import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
 
@@ -243,19 +243,87 @@ function extractProps(fn: FunctionLike): string[] {
 
 function extractRenderedText(fn: FunctionLike): RenderedText[] {
   const entries = new Map<string, RenderedText>();
+  const add = (entry: RenderedText): void => {
+    entries.set(`${entry.source}:${entry.text}:${entry.branch ?? ""}`, entry);
+  };
+
   for (const jsxText of fn.getDescendantsOfKind(SyntaxKind.JsxText)) {
     const text = jsxText.getText().replace(/\s+/g, " ").trim();
-    if (text.length > 0) entries.set(`jsx:${text}`, { text, source: "jsx" });
+    if (text.length === 0) continue;
+    add({ text, source: "jsx", ...branchTag(jsxText, fn) });
   }
+
   for (const attr of fn.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
     if (!TEXT_ATTRIBUTES.has(attr.getNameNode().getText())) continue;
     const init = attr.getInitializer();
     if (init !== undefined && Node.isStringLiteral(init)) {
       const text = init.getLiteralValue().trim();
-      if (text.length > 0) entries.set(`attribute:${text}`, { text, source: "attribute" });
+      if (text.length > 0) add({ text, source: "attribute", ...branchTag(attr, fn) });
     }
   }
+
+  // Template literals rendered as JSX children: {`${count} items in cart`} →
+  // "* items in cart" (unknown segments become * wildcards).
+  for (const expr of fn.getDescendantsOfKind(SyntaxKind.JsxExpression)) {
+    const inner = expr.getExpression();
+    if (inner === undefined) continue;
+    if (Node.isStringLiteral(inner)) {
+      const text = inner.getLiteralValue().replace(/\s+/g, " ").trim();
+      if (text.length > 0) add({ text, source: "jsx", ...branchTag(expr, fn) });
+    } else if (Node.isConditionalExpression(inner)) {
+      // {cond ? "Large order book" : "Small order book"}
+      for (const branchNode of [inner.getWhenTrue(), inner.getWhenFalse()]) {
+        if (Node.isStringLiteral(branchNode)) {
+          const text = branchNode.getLiteralValue().replace(/\s+/g, " ").trim();
+          if (text.length > 0) add({ text, source: "jsx", ...branchTag(branchNode, fn) });
+        }
+      }
+    } else if (Node.isNoSubstitutionTemplateLiteral(inner)) {
+      const text = inner.getLiteralValue().replace(/\s+/g, " ").trim();
+      if (text.length > 0) add({ text, source: "jsx", ...branchTag(expr, fn) });
+    } else if (Node.isTemplateExpression(inner)) {
+      let text = inner.getHead().getLiteralText();
+      for (const span of inner.getTemplateSpans()) {
+        text += `${resolveStringValue(span.getExpression(), 0) ?? "*"}${span.getLiteral().getLiteralText()}`;
+      }
+      text = text.replace(/\s+/g, " ").trim();
+      if (text.replace(/[*\s]/g, "").length > 0) {
+        add({ text, source: "jsx", template: true, ...branchTag(expr, fn) });
+      }
+    }
+  }
+
   return [...entries.values()];
+}
+
+/**
+ * The nearest condition guarding a rendered-text node: a ternary branch, a
+ * `cond && <jsx>` gate, or an enclosing if-statement (early-return pattern).
+ * Ternary else-branches are negated. Empty object when unconditional.
+ */
+function branchTag(node: Node, boundary: FunctionLike): { branch?: string } {
+  let current: Node | undefined = node;
+  while (current !== undefined && current !== boundary) {
+    const parent: Node | undefined = current.getParent();
+    if (parent === undefined) break;
+    if (Node.isConditionalExpression(parent)) {
+      const condition = parent.getCondition().getText();
+      if (parent.getWhenTrue() === current) return { branch: condition };
+      if (parent.getWhenFalse() === current) return { branch: `!(${condition})` };
+    }
+    if (
+      Node.isBinaryExpression(parent) &&
+      parent.getOperatorToken().getKind() === SyntaxKind.AmpersandAmpersandToken &&
+      parent.getRight() === current
+    ) {
+      return { branch: parent.getLeft().getText() };
+    }
+    if (Node.isIfStatement(parent) && parent.getThenStatement() === current) {
+      return { branch: parent.getExpression().getText() };
+    }
+    current = parent;
+  }
+  return {};
 }
 
 function extractRenderedComponents(fn: FunctionLike): string[] {

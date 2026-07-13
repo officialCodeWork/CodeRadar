@@ -205,7 +205,11 @@
         },
         "branch": {
           "type": "string",
-          "description": "Condition source text when the text renders only in a branch (step 1.5)."
+          "description": "Condition source text when the text renders only in a branch."
+        },
+        "template": {
+          "type": "boolean",
+          "description": "True when the text came from a template literal with runtime parts — unknown segments appear as `*` (\"* items in cart\") and match as wildcards."
         }
       },
       "required": [

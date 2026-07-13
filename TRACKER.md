@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 1 — Robust extraction
-- **Next step:** 1.5 — Rendered-text hardening
-- **Done:** 0.1–0.4, 1.1–1.4
+- **Next step:** 1.6 — Legacy patterns & graceful degradation
+- **Done:** 0.1–0.4, 1.1–1.5
 - **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
 
 ## What CodeRadar is
@@ -118,7 +118,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - `renderedText` becomes structured: `{ text: string, source: "jsx" | "attribute" | "i18n", branch?: string, locale?: string }[]` (schema addition — update JSON Schema + goldens).
 **Accept:** fixture `a2-i18n-keys` green: searching "Team Members" *and* "Équipe" both find the component.
 
-### [ ] 1.5 Rendered-text hardening
+### [x] 1.5 Rendered-text hardening
 **Failure modes:** A7 (extraction half), A8
 **Build:**
 - Template text: `` `${count} items` `` → `"* items"` with a `template: true` flag.
