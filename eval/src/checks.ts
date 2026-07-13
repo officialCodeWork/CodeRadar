@@ -35,8 +35,10 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
     const definition = graph.nodes.find(
       (n) => n.kind === "component" && n.name === expected.name,
     );
+    // Count by definition, not by tag name: <Panel/> (an HOC alias) is an
+    // instance OF PanelInner even though the JSX never says "PanelInner".
     const instances = graph.nodes.filter(
-      (n) => n.kind === "instance" && n.name === expected.name,
+      (n) => n.kind === "instance" && definition !== undefined && n.definitionId === definition.id,
     );
     const passed = definition !== undefined && instances.length === expected.instances;
     finalize(

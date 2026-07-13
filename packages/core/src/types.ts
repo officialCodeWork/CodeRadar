@@ -145,7 +145,14 @@ export interface DataSourceNode extends BaseNode {
   queryKey?: string;
 }
 
-export type StateKind = "useState" | "useReducer" | "context" | "redux" | "zustand" | "unknown";
+export type StateKind =
+  | "useState"
+  | "useReducer"
+  | "context"
+  | "redux"
+  | "zustand"
+  | "class-state"
+  | "unknown";
 
 /** Local or global state a component reads. */
 export interface StateNode extends BaseNode {
