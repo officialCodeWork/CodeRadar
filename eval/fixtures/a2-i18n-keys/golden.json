@@ -1,0 +1,20 @@
+{
+  "failureMode": "A2",
+  "note": "Text behind i18n keys: source has t('team.title'), the screenshot shows 'Team Members' — or 'Membres de l'équipe' when the reporter's app runs in French. Both must find the same component. Covers t() calls and <Trans i18nKey>.",
+  "scan": {
+    "i18n": { "localeGlobs": ["locales/*.json"], "defaultLocale": "en" }
+  },
+  "expect": {
+    "components": [
+      { "name": "TeamHeader", "instances": 0 },
+      { "name": "BillingHeader", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["Team Members"], "status": "ok", "top": "TeamHeader" },
+      { "terms": ["Membres de l'équipe"], "status": "ok", "top": "TeamHeader" },
+      { "terms": ["Invite teammate"], "status": "ok", "top": "TeamHeader" },
+      { "terms": ["Billing overview"], "status": "ok", "top": "BillingHeader" },
+      { "terms": ["Aperçu de la facturation"], "status": "ok", "top": "BillingHeader" }
+    ]
+  }
+}

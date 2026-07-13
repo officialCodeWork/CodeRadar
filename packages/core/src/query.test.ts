@@ -21,7 +21,7 @@ function component(file: string, name: string, renderedText: string[]): Componen
     loc: loc(file),
     exportName: name,
     props: [],
-    renderedText,
+    renderedText: renderedText.map((text) => ({ text, source: "jsx" as const })),
     rendersComponents: [],
   };
 }

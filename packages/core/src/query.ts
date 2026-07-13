@@ -52,16 +52,20 @@ export function matchComponentsByText(
 
   for (const node of graph.nodes) {
     if (node.kind !== "component") continue;
-    const haystack = node.renderedText.map((t) => t.toLowerCase());
     const matchedText: string[] = [];
     const evidence: Evidence[] = [];
     for (const needle of needles) {
-      const hit = haystack.find((h) => h.includes(needle) || needle.includes(h));
+      const hit = node.renderedText.find((entry) => {
+        const haystack = entry.text.toLowerCase();
+        return haystack.includes(needle) || needle.includes(haystack);
+      });
       if (hit !== undefined) {
-        matchedText.push(hit);
+        matchedText.push(hit.text.toLowerCase());
+        const provenance =
+          hit.source === "i18n" ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})` : "";
         evidence.push({
           kind: "text-match",
-          detail: `"${needle}" matched rendered text "${hit}"`,
+          detail: `"${needle}" matched rendered text "${hit.text}"${provenance}`,
           loc: node.loc,
         });
       }

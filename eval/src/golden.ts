@@ -46,6 +46,12 @@ export interface Golden {
   note?: string;
   /** App directory relative to the fixture dir. Default "./app". */
   app?: string;
+  /** Extra scan options this fixture needs (passed through to scanReact). */
+  scan?: {
+    baseUrls?: string[];
+    apiWrappers?: string[];
+    i18n?: { localeGlobs: string[]; defaultLocale: string };
+  };
   expect: {
     components?: GoldenComponent[];
     attributions?: GoldenAttribution[];

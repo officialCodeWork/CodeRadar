@@ -42,6 +42,23 @@ export interface BaseNode {
   flags?: string[];
 }
 
+/** One piece of text a component can render, with its provenance. */
+export interface RenderedText {
+  text: string;
+  /**
+   * Where the text comes from: JSX children, a string attribute
+   * (placeholder/label/title/alt/aria-label), or an i18n key resolved
+   * against locale files.
+   */
+  source: "jsx" | "attribute" | "i18n";
+  /** i18n entries only: the translation key, e.g. "team.title". */
+  key?: string;
+  /** i18n entries only: which locale this text belongs to. */
+  locale?: string;
+  /** Condition source text when the text renders only in a branch (step 1.5). */
+  branch?: string;
+}
+
 /** A React component definition — the code, not a usage. */
 export interface ComponentNode extends BaseNode {
   kind: "component";
@@ -50,11 +67,11 @@ export interface ComponentNode extends BaseNode {
   /** Prop names destructured or accessed from the props object. */
   props: string[];
   /**
-   * Static text visible in the rendered output (JSX text, string literals in
-   * attributes like placeholder/label/title/alt/aria-label). This is the
-   * primary signal for matching a screenshot to a component.
+   * Static text visible in the rendered output — the primary signal for
+   * matching a screenshot to a component. i18n keys are expanded to one
+   * entry per locale, so a French screenshot matches the same component.
    */
-  renderedText: string[];
+  renderedText: RenderedText[];
   /** Names of components this component renders in its JSX (deduplicated). */
   rendersComponents: string[];
 }
