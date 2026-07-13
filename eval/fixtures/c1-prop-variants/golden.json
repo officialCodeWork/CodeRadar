@@ -1,0 +1,37 @@
+{
+  "failureMode": "C1",
+  "note": "Prop-origin variants beyond the useState/useEffect pattern: a react-query result prop (with ?? [] derivation) and a custom-hook result prop. The same Table component must carry a different API per page.",
+  "expect": {
+    "components": [{ "name": "Table", "instances": 2 }],
+    "attributions": [
+      {
+        "component": "Table",
+        "instanceAt": "QueryPage.tsx",
+        "endpoints": ["/api/billing"]
+      },
+      {
+        "component": "Table",
+        "instanceAt": "HookPage.tsx",
+        "endpoints": ["/api/members"]
+      }
+    ],
+    "forbidden": [
+      {
+        "component": "Table",
+        "instanceAt": "QueryPage.tsx",
+        "endpoint": "/api/members",
+        "note": "poison: hook-page API attributed to the query-page table"
+      },
+      {
+        "component": "Table",
+        "instanceAt": "HookPage.tsx",
+        "endpoint": "/api/billing",
+        "note": "poison: query-page API attributed to the hook-page table"
+      }
+    ],
+    "queries": [
+      { "terms": ["Billing rows"], "status": "ok", "top": "QueryPage" },
+      { "terms": ["Member rows"], "status": "ok", "top": "HookPage" }
+    ]
+  }
+}
