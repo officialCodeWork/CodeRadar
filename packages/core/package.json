@@ -18,9 +18,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "schema": "node scripts/gen-schema.mjs"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
+    "ts-json-schema-generator": "^2.9.0",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7"
   }
