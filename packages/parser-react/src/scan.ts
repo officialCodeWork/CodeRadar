@@ -297,6 +297,7 @@ function extractBodyFacts(
           endpoint: dataSource.endpoint,
           raw: dataSource.raw,
           resolved: dataSource.resolved,
+          ...(dataSource.queryKey !== undefined ? { queryKey: dataSource.queryKey } : {}),
         });
       }
       addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
@@ -350,12 +351,18 @@ function extractBodyFacts(
   }
 }
 
+type DetectedSource = {
+  sourceKind: DataSourceKind;
+  method: string | null;
+  queryKey?: string;
+} & ResolvedEndpoint;
+
 function detectDataSource(
   call: CallExpression,
   callee: string,
   baseUrls: string[],
   wrappers: WrapperRegistry,
-): ({ sourceKind: DataSourceKind; method: string | null } & ResolvedEndpoint) | null {
+): DetectedSource | null {
   const firstArg = call.getArguments()[0];
 
   const wrapper = wrappers.get(callee);
@@ -393,8 +400,26 @@ function detectDataSource(
   }
 
   if (callee === "useQuery" || callee === "useMutation" || callee === "useInfiniteQuery") {
-    // Endpoint lives inside the queryFn (followed in step 1.3); the query key
-    // is the identity meanwhile.
+    let keyText: string | undefined;
+    let fnExpr: Node | undefined;
+    if (firstArg !== undefined && Node.isObjectLiteralExpression(firstArg)) {
+      // v4/v5 object form: useQuery({ queryKey, queryFn }) / useMutation({ mutationFn })
+      keyText = propertyInitializer(firstArg, "queryKey")?.getText() ??
+        propertyInitializer(firstArg, "mutationKey")?.getText();
+      fnExpr = propertyInitializer(firstArg, "queryFn") ?? propertyInitializer(firstArg, "mutationFn");
+    } else if (callee === "useMutation") {
+      // v3 positional form: useMutation(mutationFn, options?)
+      fnExpr = firstArg;
+    } else {
+      // v3 positional form: useQuery(key, queryFn, options?)
+      keyText = firstArg?.getText();
+      fnExpr = call.getArguments()[1];
+    }
+    const queryKey = keyText?.slice(0, 80);
+    const inner = fnExpr !== undefined ? endpointFromFunction(fnExpr, baseUrls, wrappers) : null;
+    if (inner !== null) {
+      return { ...inner, sourceKind: "react-query", queryKey };
+    }
     const resolved = resolveEndpoint(firstArg, baseUrls);
     return {
       sourceKind: "react-query",
@@ -404,13 +429,79 @@ function detectDataSource(
         resolved.resolved === "none"
           ? (firstArg?.getText().slice(0, 80) ?? "<dynamic>")
           : resolved.endpoint,
+      queryKey,
     };
   }
 
   if (callee === "useSWR") {
-    return { sourceKind: "swr", method: "GET", ...resolveEndpoint(firstArg, baseUrls) };
+    // SWR convention: the key IS the URL (passed to the fetcher). When the key
+    // carries no shape, fall back to the fetcher body.
+    const key = resolveEndpoint(firstArg, baseUrls);
+    if (key.resolved !== "none") {
+      return { sourceKind: "swr", method: "GET", ...key, queryKey: firstArg?.getText().slice(0, 80) };
+    }
+    const fetcher = call.getArguments()[1];
+    const inner = fetcher !== undefined ? endpointFromFunction(fetcher, baseUrls, wrappers) : null;
+    if (inner !== null) return { ...inner, sourceKind: "swr" };
+    return { sourceKind: "swr", method: "GET", ...key };
   }
 
+  return null;
+}
+
+function propertyInitializer(objectLiteral: Node, name: string): Node | undefined {
+  if (!Node.isObjectLiteralExpression(objectLiteral)) return undefined;
+  const property = objectLiteral.getProperty(name);
+  if (property !== undefined && Node.isPropertyAssignment(property)) {
+    return property.getInitializer();
+  }
+  if (property !== undefined && Node.isShorthandPropertyAssignment(property)) {
+    return property.getNameNode();
+  }
+  return undefined;
+}
+
+/**
+ * Follow a queryFn/mutationFn/fetcher expression to a function body (inline
+ * arrow, or a reference resolved via go-to-definition, possibly in another
+ * file) and extract the first data source inside it. react-query/swr results
+ * are skipped to avoid self-recursion.
+ */
+function endpointFromFunction(
+  expr: Node,
+  baseUrls: string[],
+  wrappers: WrapperRegistry,
+): DetectedSource | null {
+  const body = functionBodyOf(expr);
+  if (body === null) return null;
+  for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    const source = detectDataSource(call, call.getExpression().getText(), baseUrls, wrappers);
+    if (source !== null && source.sourceKind !== "react-query" && source.sourceKind !== "swr") {
+      return source;
+    }
+  }
+  return null;
+}
+
+function functionBodyOf(expr: Node): Node | null {
+  if (Node.isArrowFunction(expr) || Node.isFunctionExpression(expr)) {
+    return expr.getBody() ?? null;
+  }
+  if (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr)) {
+    const identifier = Node.isPropertyAccessExpression(expr) ? expr.getNameNode() : expr;
+    if (!Node.isIdentifier(identifier)) return null;
+    for (const definition of identifier.getDefinitionNodes()) {
+      if (Node.isFunctionDeclaration(definition)) {
+        return definition.getBody() ?? null;
+      }
+      if (Node.isVariableDeclaration(definition)) {
+        const init = definition.getInitializer();
+        if (init !== undefined && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
+          return init.getBody() ?? null;
+        }
+      }
+    }
+  }
   return null;
 }
 
