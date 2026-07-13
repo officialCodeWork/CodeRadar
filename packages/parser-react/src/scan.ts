@@ -168,7 +168,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     collectHocAliases(sourceFile, hocAliases);
   }
 
-  materializeInstances(
+  const instanceIds = materializeInstances(
     pendingInstances,
     nodes,
     addEdge,
@@ -176,6 +176,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     options.designSystemPackages ?? [],
     root,
   );
+  resolvePropFlow(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers);
 
   return {
     version: 2,
@@ -855,7 +856,7 @@ function materializeInstances(
   hocAliases: ReadonlyMap<string, string>,
   designSystemPackages: string[],
   root: string,
-): void {
+): Array<string | null> {
   const definitionsByName = new Map<string, string>();
   for (const node of nodes.values()) {
     if (node.kind === "component") definitionsByName.set(node.name, node.id);
@@ -964,6 +965,145 @@ function materializeInstances(
     const instance = created.find((n) => n.id === id);
     if (instance !== undefined && parentId !== null && parentId !== undefined) {
       instance.parentInstanceId = parentId;
+    }
+  }
+
+  return idByIndex;
+}
+
+/**
+ * Prop-flow (TRACKER step 2.2 — failure mode C1, the headline case).
+ *
+ * For each instance, trace expression props back to the data that populates
+ * them in the parent scope and emit data-source --provides-data--> instance
+ * edges. This is what makes <DataTable rows={rows}/> on the Users page carry
+ * /api/users while the identical component on the Invoices page carries
+ * /api/invoices.
+ *
+ * Origins handled (depth-capped):
+ * - useState pairs: `const [rows, setRows] = useState()` → every setRows call
+ *   site → a data-source call in the same statement (`fetch(...).then(setRows)`)
+ * - direct results: `const { data } = useQuery(...)` / `const r = useApi("/x")`
+ * - project hooks: `const { users } = useUsers()` → the hook's fetches-from edges
+ * - simple derivations: `const rows = raw.items` → recurse on `raw`
+ */
+function resolvePropFlow(
+  pendingInstances: PendingInstance[],
+  instanceIds: Array<string | null>,
+  nodes: Map<string, LineageNode>,
+  edges: LineageEdge[],
+  addEdge: (edge: LineageEdge) => void,
+  baseUrls: string[],
+  wrappers: WrapperRegistry,
+): void {
+  const hooksByName = new Map<string, string>();
+  for (const node of nodes.values()) {
+    if (node.kind === "hook") hooksByName.set(node.name, node.id);
+  }
+
+  const hookSources = (hookId: string): string[] =>
+    edges.flatMap((e) => (e.from === hookId && e.kind === "fetches-from" ? [e.to] : []));
+
+  /** Data-source node ids that populate `expr` in its scope. */
+  const originsOf = (expr: Node, file: string, depth: number): Set<string> => {
+    const origins = new Set<string>();
+    if (depth > 3) return origins;
+
+    const fromCall = (call: Node): void => {
+      if (!Node.isCallExpression(call)) return;
+      const callee = call.getExpression().getText();
+      const hookId = hooksByName.get(callee);
+      if (hookId !== undefined) {
+        for (const dsId of hookSources(hookId)) origins.add(dsId);
+        return;
+      }
+      const source = detectDataSource(call, callee, baseUrls, wrappers);
+      if (source !== null) {
+        origins.add(nodeId("data-source", file, `${source.sourceKind}:${source.endpoint}`));
+      }
+    };
+
+    if (!Node.isIdentifier(expr)) {
+      // Derived expressions: recurse on each identifier inside (raw.items → raw).
+      for (const identifier of expr.getDescendantsOfKind(SyntaxKind.Identifier)) {
+        for (const origin of originsOf(identifier, file, depth + 1)) origins.add(origin);
+      }
+      return origins;
+    }
+
+    for (const definition of expr.getDefinitionNodes()) {
+      let varDecl: Node | undefined = definition;
+      if (Node.isBindingElement(varDecl)) {
+        varDecl = varDecl.getFirstAncestorByKind(SyntaxKind.VariableDeclaration);
+      }
+      if (varDecl === undefined || !Node.isVariableDeclaration(varDecl)) continue;
+
+      const init = varDecl.getInitializer();
+      if (init !== undefined) {
+        // Direct result: const { data } = useQuery(...) / const r = useApi("/x")
+        // — including calls wrapped in await / as-casts.
+        fromCall(init);
+        if (origins.size === 0) {
+          for (const inner of init.getDescendantsOfKind(SyntaxKind.CallExpression)) fromCall(inner);
+        }
+      }
+
+      // useState pair: find the setter and every statement that calls it.
+      const binding = varDecl.getNameNode();
+      if (
+        Node.isArrayBindingPattern(binding) &&
+        init !== undefined &&
+        Node.isCallExpression(init) &&
+        init.getExpression().getText() === "useState"
+      ) {
+        const setterElement = binding.getElements()[1];
+        if (setterElement !== undefined && Node.isBindingElement(setterElement)) {
+          const setterName = setterElement.getName();
+          const scope = varDecl.getFirstAncestor(
+            (a) => Node.isArrowFunction(a) || Node.isFunctionExpression(a) || Node.isFunctionDeclaration(a) || Node.isClassDeclaration(a),
+          );
+          for (const ref of (scope ?? varDecl.getSourceFile()).getDescendantsOfKind(
+            SyntaxKind.Identifier,
+          )) {
+            if (ref.getText() !== setterName || ref === setterElement.getNameNode()) continue;
+            const statement = ref.getFirstAncestorByKind(SyntaxKind.ExpressionStatement);
+            if (statement === undefined) continue;
+            for (const call of statement.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+              fromCall(call);
+            }
+          }
+        }
+      }
+
+      // Derivation: const rows = raw.items ?? [] → recurse on raw.
+      if (origins.size === 0 && init !== undefined && !Node.isCallExpression(init)) {
+        for (const identifier of init.getDescendantsOfKind(SyntaxKind.Identifier)) {
+          if (identifier.getText() === expr.getText()) continue;
+          for (const origin of originsOf(identifier, file, depth + 1)) origins.add(origin);
+        }
+      }
+    }
+    return origins;
+  };
+
+  for (const [index, pending] of pendingInstances.entries()) {
+    const instanceId = instanceIds[index];
+    if (instanceId === null || instanceId === undefined) continue;
+    for (const attr of pending.element.getAttributes()) {
+      if (!Node.isJsxAttribute(attr)) continue;
+      const init = attr.getInitializer();
+      if (init === undefined || !Node.isJsxExpression(init)) continue;
+      const expr = init.getExpression();
+      if (expr === undefined) continue;
+      for (const dsId of originsOf(expr, pending.file, 0)) {
+        if (!nodes.has(dsId)) continue;
+        addEdge({
+          from: dsId,
+          to: instanceId,
+          kind: "provides-data",
+          via: attr.getNameNode().getText(),
+        });
+      }
     }
   }
 }

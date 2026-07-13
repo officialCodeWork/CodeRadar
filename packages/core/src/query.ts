@@ -111,6 +111,12 @@ export function matchComponentsByText(
   return ok(candidates);
 }
 
+export interface InstanceAttribution {
+  instance: InstanceNode;
+  /** Data flowing INTO this call site through props (provides-data edges). */
+  dataSources: DataSourceNode[];
+}
+
 export interface Lineage {
   component: ComponentNode;
   /** The instance the trace started from, when an instance id was given. */
@@ -120,6 +126,12 @@ export interface Lineage {
   events: EventNode[];
   /** Hooks, instances, and child components on the path, in discovery order. */
   via: LineageNode[];
+  /**
+   * Definition-level traces only: what each call site receives, kept SEPARATE
+   * per instance — never merged, because merging is exactly the C1 poison
+   * (the users-page table would appear to consume the invoices API).
+   */
+  perInstance?: InstanceAttribution[];
 }
 
 /**
@@ -164,6 +176,35 @@ export function traceLineage(graph: LineageGraph, id: string): QueryResult<Linea
   const seen = new Set<string>([startId, component.id]);
   const queue: string[] = [startId, component.id];
   let edgesWalked = 0;
+
+  // Data flowing INTO the traced instance through props (provides-data points
+  // data-source → instance, so it is invisible to an outgoing-edge walk).
+  if (instance !== null) {
+    for (const edge of graph.edges) {
+      if (edge.kind !== "provides-data" || edge.to !== instance.id) continue;
+      edgesWalked += 1;
+      const source = byId.get(edge.from);
+      if (source !== undefined && source.kind === "data-source" && !seen.has(source.id)) {
+        seen.add(source.id);
+        lineage.dataSources.push(source);
+      }
+    }
+  }
+
+  // Definition-level trace: report what each call site receives, per instance.
+  if (instance === null) {
+    const perInstance: InstanceAttribution[] = [];
+    for (const node of graph.nodes) {
+      if (node.kind !== "instance" || node.definitionId !== component.id) continue;
+      const incoming = graph.edges.flatMap((edge) => {
+        if (edge.kind !== "provides-data" || edge.to !== node.id) return [];
+        const source = byId.get(edge.from);
+        return source !== undefined && source.kind === "data-source" ? [source] : [];
+      });
+      perInstance.push({ instance: node, dataSources: incoming });
+    }
+    if (perInstance.length > 0) lineage.perInstance = perInstance;
+  }
 
   while (queue.length > 0) {
     const currentId = queue.shift();

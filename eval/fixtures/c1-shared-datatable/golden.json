@@ -11,14 +11,12 @@
       {
         "component": "DataTable",
         "instanceAt": "pages/UsersPage.tsx",
-        "endpoints": ["/api/users"],
-        "expectedFail": "phase-2: per-instance attribution requires prop-flow (step 2.2)"
+        "endpoints": ["/api/users"]
       },
       {
         "component": "DataTable",
         "instanceAt": "pages/InvoicesPage.tsx",
-        "endpoints": ["/api/invoices"],
-        "expectedFail": "phase-2: per-instance attribution requires prop-flow (step 2.2)"
+        "endpoints": ["/api/invoices"]
       },
       {
         "component": "UsersPage",

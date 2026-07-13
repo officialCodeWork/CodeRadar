@@ -2,6 +2,6 @@
   "maxFail": 0,
   "maxUnexpectedPass": 0,
   "minMatchAccuracy": 1,
-  "minLineagePrecision": 0.9,
-  "minLineageRecall": 0.88
+  "minLineagePrecision": 0.95,
+  "minLineageRecall": 0.95
 }
