@@ -24,7 +24,8 @@ import {
   type VariableDeclaration,
 } from "ts-morph";
 
-import { resolveEndpoint, type ResolvedEndpoint } from "./endpoint.js";
+import { fetchMethod, resolveEndpoint, type ResolvedEndpoint } from "./endpoint.js";
+import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
 
 export interface ScanOptions {
   /** Directory to scan. */
@@ -37,6 +38,11 @@ export interface ScanOptions {
    * environment-independent.
    */
   baseUrls?: string[];
+  /**
+   * Explicitly-declared API wrapper callees (e.g. ["http.get", "api.post"])
+   * for clients the heuristic can't see. Heuristic detection runs regardless.
+   */
+  apiWrappers?: string[];
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -90,6 +96,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     ]);
   }
 
+  const wrappers = detectWrappers(project, options.apiWrappers ?? []);
   const nodes = new Map<string, LineageNode>();
   const edges: LineageEdge[] = [];
   const pendingInstances: PendingInstance[] = [];
@@ -125,7 +132,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl, id, file, nodes, addEdge, baseUrls);
+      extractBodyFacts(decl, id, file, nodes, addEdge, baseUrls, wrappers);
     }
   }
 
@@ -266,11 +273,17 @@ function extractBodyFacts(
   nodes: Map<string, LineageNode>,
   addEdge: (edge: LineageEdge) => void,
   baseUrls: string[],
+  wrappers: WrapperRegistry,
 ): void {
+  // A wrapper's own body is plumbing: its URL is a parameter placeholder, so a
+  // data source emitted here would attribute ":path" to every consumer. Call
+  // sites get the real, substituted endpoint instead.
+  const declIsWrapper = wrappers.has(decl.name);
+
   for (const call of decl.fn.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = call.getExpression().getText();
 
-    const dataSource = detectDataSource(call, callee, baseUrls);
+    const dataSource = declIsWrapper ? null : detectDataSource(call, callee, baseUrls, wrappers);
     if (dataSource !== null) {
       const dsId = nodeId("data-source", file, `${dataSource.sourceKind}:${dataSource.endpoint}`);
       if (!nodes.has(dsId)) {
@@ -341,8 +354,25 @@ function detectDataSource(
   call: CallExpression,
   callee: string,
   baseUrls: string[],
+  wrappers: WrapperRegistry,
 ): ({ sourceKind: DataSourceKind; method: string | null } & ResolvedEndpoint) | null {
   const firstArg = call.getArguments()[0];
+
+  const wrapper = wrappers.get(callee);
+  if (wrapper !== undefined) {
+    const pathArg = call.getArguments()[wrapper.pathParamIndex];
+    const resolved = resolveEndpoint(pathArg, baseUrls);
+    const substitution =
+      resolved.resolved === "none" ? `:${wrapper.paramName}` : resolved.endpoint;
+    const endpoint = wrapper.template.replace(`:${wrapper.paramName}`, substitution);
+    return {
+      sourceKind: wrapper.sourceKind,
+      method: wrapper.method,
+      endpoint,
+      raw: call.getText().slice(0, 120),
+      resolved: endpoint.includes(":") ? "partial" : "full",
+    };
+  }
 
   if (callee === "fetch") {
     return {
@@ -381,31 +411,6 @@ function detectDataSource(
     return { sourceKind: "swr", method: "GET", ...resolveEndpoint(firstArg, baseUrls) };
   }
 
-  return null;
-}
-
-function fetchMethod(call: CallExpression): string {
-  const optionsArg = call.getArguments()[1];
-  if (optionsArg !== undefined && Node.isObjectLiteralExpression(optionsArg)) {
-    const methodProp = optionsArg.getProperty("method");
-    if (methodProp !== undefined && Node.isPropertyAssignment(methodProp)) {
-      const value = methodProp.getInitializer();
-      const literal = literalText(value);
-      if (literal !== null) return literal.toUpperCase();
-    }
-  }
-  return "GET";
-}
-
-/** String literal or template text (with `${...}` placeholders preserved). */
-function literalText(node: Node | undefined): string | null {
-  if (node === undefined) return null;
-  if (Node.isStringLiteral(node) || Node.isNoSubstitutionTemplateLiteral(node)) {
-    return node.getLiteralValue();
-  }
-  if (Node.isTemplateExpression(node)) {
-    return node.getText().slice(1, -1); // keep ${...} placeholders, drop backticks
-  }
   return null;
 }
 
