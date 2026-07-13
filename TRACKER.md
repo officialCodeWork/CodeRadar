@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 2 — Instance graph & cross-file data flow
-- **Next step:** 2.3 — Handler resolution through props
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1, 2.2 (headline: per-instance attribution green)
+- **Next step:** 2.4 — Store adapter: writers ↔ readers
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.3
 - **Gates passed:** Gate 0 (CI + red-path, PRs #5/#6) · Gate 1 (precision 1.000 ≥ 0.90, recall 0.895 ≥ 0.80 across C2/C3/C5/A2/A7/A8/D4, zero forbidden hits)
 
 ## What CodeRadar is
@@ -157,7 +157,7 @@ The heart of the project. C1 and B1 live here.
 - Depth limit (default 5 hops) with `flags: ["depth-limited"]` when hit.
 **Accept:** **c1-shared-datatable attribution assertions flip from expected-fail to green** — DataTable@Users → `/api/users`, DataTable@Invoices → `/api/invoices`, zero `forbidden` hits. Instance attribution accuracy = 1.0 on C1 fixtures.
 
-### [ ] 2.3 Handler resolution through props
+### [x] 2.3 Handler resolution through props
 **Failure modes:** B1
 **Build:** same machinery, callback direction:
 - `onClick={props.onSave}` → resolve `onSave` at each parent instance → the passed function → its body (which Phase 3 mines for effects). Chain recorded as evidence (`edge-chain`).
