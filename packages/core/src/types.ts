@@ -95,6 +95,12 @@ export type DataSourceKind =
   | "websocket"
   | "unknown";
 
+/** How much of an endpoint was statically resolvable. */
+export type EndpointResolution =
+  | "full" // every segment is a known string
+  | "partial" // known shape with :param placeholders, e.g. "/api/users/:id"
+  | "none"; // nothing statically known ("<dynamic>")
+
 /** An external data origin: an HTTP endpoint, GraphQL operation, or socket. */
 export interface DataSourceNode extends BaseNode {
   kind: "data-source";
@@ -102,10 +108,14 @@ export interface DataSourceNode extends BaseNode {
   /** HTTP method when statically determinable. */
   method: string | null;
   /**
-   * The endpoint as written in source — may contain template placeholders,
-   * e.g. "/api/users/${id}".
+   * Canonical endpoint pattern: constants folded, template placeholders
+   * normalized to :param form — e.g. "/api/users/:id". This is the value
+   * attribution and cross-graph joins match on.
    */
   endpoint: string;
+  /** The endpoint expression exactly as written in source. */
+  raw: string;
+  resolved: EndpointResolution;
 }
 
 export type StateKind = "useState" | "useReducer" | "context" | "redux" | "zustand" | "unknown";

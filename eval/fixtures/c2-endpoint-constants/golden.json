@@ -1,0 +1,27 @@
+{
+  "failureMode": "C2",
+  "note": "Endpoints hidden behind constants: an object member (ENDPOINTS.USERS), a plain named constant (HEALTH_URL), and a concatenation (API_PREFIX + '/reports') — all declared in a different file than the fetch. Constant folding must recover the literal endpoint.",
+  "expect": {
+    "components": [
+      { "name": "UsersPanel", "instances": 0 },
+      { "name": "HealthBadge", "instances": 0 },
+      { "name": "ReportsPanel", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "UsersPanel", "endpoints": ["/api/users"] },
+      { "component": "HealthBadge", "endpoints": ["/api/health"] },
+      { "component": "ReportsPanel", "endpoints": ["/api/reports"] }
+    ],
+    "forbidden": [
+      {
+        "component": "UsersPanel",
+        "endpoint": "<dynamic>",
+        "note": "constant-hidden endpoint reported as dynamic means folding regressed"
+      }
+    ],
+    "queries": [
+      { "terms": ["User Directory"], "status": "ok", "top": "UsersPanel" },
+      { "terms": ["Weekly reports"], "status": "ok", "top": "ReportsPanel" }
+    ]
+  }
+}

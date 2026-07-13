@@ -4,10 +4,10 @@
 
 ## Status
 
-- **Current phase:** 0 — Foundations
-- **Next step:** 1.1 — Endpoint resolution (constants, templates, patterns)
-- **Done:** 0.1, 0.2, 0.3, 0.4
-- **Gates passed:** none yet (Gate 0 completes with 0.4)
+- **Current phase:** 1 — Robust extraction
+- **Next step:** 1.2 — API-client wrapper adapter
+- **Done:** 0.1–0.4, 1.1
+- **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
 
 ## What CodeRadar is
 
@@ -88,7 +88,7 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 Make the parser survive real code instead of demo code. All work is within-file or
 follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 
-### [ ] 1.1 Endpoint resolution — constants, templates, patterns
+### [x] 1.1 Endpoint resolution — constants, templates, patterns
 **Failure modes:** C2 (constants half), C3
 **Build:** in `parser-react`:
 - Resolve identifier arguments to fetch/axios through imports to their declarations (constant folding: string literals, `const` object members like `ENDPOINTS.USERS`, simple concatenation).
