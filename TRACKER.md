@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 0 — Foundations
-- **Next step:** 0.3 — Graph storage & versioning
-- **Done:** 0.1, 0.2
+- **Next step:** 0.4 — CI pipeline
+- **Done:** 0.1, 0.2, 0.3
 - **Gates passed:** none yet (Gate 0 completes with 0.4)
 
 ## What CodeRadar is
@@ -67,12 +67,12 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 - Fixtures: `c1-shared-datatable` (DataTable rendered by Users + Invoices pages, different APIs — must attribute per instance, `forbidden` catches definition-level attribution), `a4-generic-text` (three components sharing "Save"), plus `demo-app` moved under fixtures.
 **Accept:** `pnpm eval` runs green locally on the non-C1 assertions; C1 attribution assertions may be *red* (prop-flow lands in 2.2) but the fixture and its golden file exist and the runner reports them as `expected-fail: phase-2`. Expected-fail support is part of the runner.
 
-### [ ] 0.3 Graph storage & versioning
+### [x] 0.3 Graph storage & versioning
 **Failure modes:** G2, G3 (foundation), D1 (foundation)
 **Build:**
 - `GraphMeta` — `{ commitSha, dirty: boolean, generatedAt, generator, scanRoot }` embedded in `LineageGraph`.
 - `saveGraph(graph, path)` / `loadGraph(path)` in core with schema-version check (refuse to load a newer major version).
-- JSON Schema for the whole graph exported to `dist/schemas/lineage-graph.schema.json` (generated from the TS types; committed; drift-gated by a test that regenerates and diffs).
+- JSON Schema for the whole graph exported to `schemas/lineage-graph.schema.json` (repo root — `dist/` is gitignored; generated from the TS types; committed; drift-gated by a test that regenerates and diffs).
 - CLI: `scan` records commit SHA (via `git rev-parse`, `dirty` from `git status`).
 **Accept:** round-trip test (scan → save → load → deep-equal); schema drift test; `coderadar scan` output includes SHA.
 

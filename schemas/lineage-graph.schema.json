@@ -1,0 +1,504 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/LineageGraph",
+  "definitions": {
+    "LineageGraph": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 2,
+          "description": "Schema version for forward compatibility."
+        },
+        "root": {
+          "type": "string",
+          "description": "Absolute path of the scanned root at generation time."
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/GraphMeta"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LineageNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LineageEdge"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "root",
+        "generatedAt",
+        "generator",
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false
+    },
+    "GraphMeta": {
+      "type": "object",
+      "properties": {
+        "commitSha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Commit SHA of the scanned tree; null when not a git repo."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the working tree had uncommitted changes at scan time."
+        }
+      },
+      "required": [
+        "commitSha",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "Scan provenance — which code this graph describes."
+    },
+    "LineageNode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ComponentNode"
+        },
+        {
+          "$ref": "#/definitions/InstanceNode"
+        },
+        {
+          "$ref": "#/definitions/HookNode"
+        },
+        {
+          "$ref": "#/definitions/DataSourceNode"
+        },
+        {
+          "$ref": "#/definitions/StateNode"
+        },
+        {
+          "$ref": "#/definitions/EventNode"
+        }
+      ]
+    },
+    "ComponentNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "component"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "exportName": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Named or default export, if exported."
+        },
+        "props": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Prop names destructured or accessed from the props object."
+        },
+        "renderedText": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Static text visible in the rendered output (JSX text, string literals in attributes like placeholder/label/title/alt/aria-label). This is the primary signal for matching a screenshot to a component."
+        },
+        "rendersComponents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of components this component renders in its JSX (deduplicated)."
+        }
+      },
+      "required": [
+        "exportName",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "props",
+        "renderedText",
+        "rendersComponents"
+      ],
+      "additionalProperties": false,
+      "description": "A React component definition — the code, not a usage."
+    },
+    "SourceLocation": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path relative to the scan root, POSIX separators."
+        },
+        "line": {
+          "type": "number",
+          "description": "1-based line of the declaration."
+        },
+        "endLine": {
+          "type": "number",
+          "description": "1-based end line of the declaration."
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "endLine"
+      ],
+      "additionalProperties": false,
+      "description": "Where a node lives in the codebase."
+    },
+    "InstanceNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "instance"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "definitionId": {
+          "type": "string",
+          "description": "Id of the ComponentNode this instantiates."
+        },
+        "parentInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Enclosing instance in the render tree. Null until the cross-file instance tree is built (Phase 2.1); the enclosing *definition* is available via the incoming `renders` edge meanwhile."
+        },
+        "staticProps": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Props with statically-known string values at this call site."
+        }
+      },
+      "required": [
+        "definitionId",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "parentInstanceId",
+        "staticProps"
+      ],
+      "additionalProperties": false,
+      "description": "A component as rendered at one specific call site.\n\nThe same <DataTable> definition rendered on the Users page and the Invoices page yields two instances — and per-instance data attribution (Phase 2.2) is what lets each report a different API."
+    },
+    "HookNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "hook"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "exportName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "exportName",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A custom hook — often the bridge between a component and its data."
+    },
+    "DataSourceNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "data-source"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "sourceKind": {
+          "$ref": "#/definitions/DataSourceKind"
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "HTTP method when statically determinable."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "The endpoint as written in source — may contain template placeholders, e.g. \"/api/users/${id}\"."
+        }
+      },
+      "required": [
+        "endpoint",
+        "id",
+        "kind",
+        "loc",
+        "method",
+        "name",
+        "sourceKind"
+      ],
+      "additionalProperties": false,
+      "description": "An external data origin: an HTTP endpoint, GraphQL operation, or socket."
+    },
+    "DataSourceKind": {
+      "type": "string",
+      "enum": [
+        "fetch",
+        "axios",
+        "react-query",
+        "swr",
+        "graphql",
+        "websocket",
+        "unknown"
+      ]
+    },
+    "StateNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "state"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "stateKind": {
+          "$ref": "#/definitions/StateKind"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "stateKind"
+      ],
+      "additionalProperties": false,
+      "description": "Local or global state a component reads."
+    },
+    "StateKind": {
+      "type": "string",
+      "enum": [
+        "useState",
+        "useReducer",
+        "context",
+        "redux",
+        "zustand",
+        "unknown"
+      ]
+    },
+    "EventNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "event"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "event": {
+          "type": "string",
+          "description": "e.g. \"onClick\", \"onSubmit\", \"onChange\""
+        },
+        "handler": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the handler function, if resolvable."
+        }
+      },
+      "required": [
+        "event",
+        "handler",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A user or system event a component responds to."
+    },
+    "LineageEdge": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/EdgeKind"
+        },
+        "via": {
+          "type": "string",
+          "description": "Prop name for provides-data edges; handler name for triggers."
+        },
+        "condition": {
+          "$ref": "#/definitions/EdgeCondition"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "EdgeKind": {
+      "type": "string",
+      "enum": [
+        "renders",
+        "instance-of",
+        "uses-hook",
+        "fetches-from",
+        "provides-data",
+        "reads-state",
+        "writes-state",
+        "handles",
+        "triggers"
+      ]
+    },
+    "EdgeCondition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "flag",
+            "role",
+            "branch",
+            "response"
+          ]
+        },
+        "expression": {
+          "type": "string",
+          "description": "Source text of the condition, e.g. `isEnabled(\"new-billing\")`."
+        }
+      },
+      "required": [
+        "kind",
+        "expression"
+      ],
+      "additionalProperties": false,
+      "description": "A statically-detected condition guarding an edge (feature flag, role, branch)."
+    }
+  }
+}

@@ -4,9 +4,12 @@ import path from "node:path";
 
 import {
   type Candidate,
+  collectGraphMeta,
   type ComponentMatch,
   type LineageGraph,
+  loadGraph as loadGraphFile,
   matchComponentsByText,
+  saveGraph,
   traceLineage,
 } from "@coderadar/core";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
@@ -27,13 +30,17 @@ program
   .argument("<dir>", "directory to scan")
   .option("-o, --out <file>", "output file", "coderadar.graph.json")
   .action((dir: string, opts: { out: string }) => {
-    const graph = resolveHookEdges(scanReact({ root: dir }));
-    fs.writeFileSync(opts.out, JSON.stringify(graph, null, 2));
+    const meta = collectGraphMeta(path.resolve(dir));
+    const graph = { ...resolveHookEdges(scanReact({ root: dir })), meta };
+    saveGraph(graph, opts.out);
     const counts = new Map<string, number>();
     for (const node of graph.nodes) {
       counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
     }
     console.log(`Scanned ${path.resolve(dir)}`);
+    console.log(
+      `  commit: ${meta.commitSha ?? "not a git repo"}${meta.dirty ? " (dirty working tree)" : ""}`,
+    );
     for (const [kind, count] of [...counts].sort()) console.log(`  ${kind}: ${count}`);
     console.log(`  edges: ${graph.edges.length}`);
     console.log(`Graph written to ${opts.out}`);
@@ -127,7 +134,12 @@ function loadGraph(file: string): LineageGraph {
     console.error(`Graph file not found: ${file} — run \`coderadar scan <dir>\` first.`);
     process.exit(1);
   }
-  return JSON.parse(fs.readFileSync(file, "utf-8")) as LineageGraph;
+  try {
+    return loadGraphFile(file);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
 
 program.parse();
