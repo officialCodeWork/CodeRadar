@@ -24,11 +24,19 @@ import {
   type VariableDeclaration,
 } from "ts-morph";
 
+import { resolveEndpoint, type ResolvedEndpoint } from "./endpoint.js";
+
 export interface ScanOptions {
   /** Directory to scan. */
   root: string;
   /** Glob patterns relative to root. Default: all .tsx/.jsx plus hook-looking .ts files. */
   include?: string[];
+  /**
+   * Base-URL prefixes stripped from resolved endpoints, e.g.
+   * ["https://api.example.com", "/v2"]. Keeps the graph's endpoint patterns
+   * environment-independent.
+   */
+  baseUrls?: string[];
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -68,6 +76,7 @@ const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "
 export function scanReact(options: ScanOptions): LineageGraph {
   const root = path.resolve(options.root);
   const include = options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
+  const baseUrls = options.baseUrls ?? [];
 
   const project = new Project({
     compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
@@ -116,7 +125,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl, id, file, nodes, addEdge);
+      extractBodyFacts(decl, id, file, nodes, addEdge, baseUrls);
     }
   }
 
@@ -256,11 +265,12 @@ function extractBodyFacts(
   file: string,
   nodes: Map<string, LineageNode>,
   addEdge: (edge: LineageEdge) => void,
+  baseUrls: string[],
 ): void {
   for (const call of decl.fn.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = call.getExpression().getText();
 
-    const dataSource = detectDataSource(call, callee);
+    const dataSource = detectDataSource(call, callee, baseUrls);
     if (dataSource !== null) {
       const dsId = nodeId("data-source", file, `${dataSource.sourceKind}:${dataSource.endpoint}`);
       if (!nodes.has(dsId)) {
@@ -272,6 +282,8 @@ function extractBodyFacts(
           sourceKind: dataSource.sourceKind,
           method: dataSource.method,
           endpoint: dataSource.endpoint,
+          raw: dataSource.raw,
+          resolved: dataSource.resolved,
         });
       }
       addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
@@ -328,14 +340,15 @@ function extractBodyFacts(
 function detectDataSource(
   call: CallExpression,
   callee: string,
-): { sourceKind: DataSourceKind; method: string | null; endpoint: string } | null {
+  baseUrls: string[],
+): ({ sourceKind: DataSourceKind; method: string | null } & ResolvedEndpoint) | null {
   const firstArg = call.getArguments()[0];
 
   if (callee === "fetch") {
     return {
       sourceKind: "fetch",
       method: fetchMethod(call),
-      endpoint: literalText(firstArg) ?? "<dynamic>",
+      ...resolveEndpoint(firstArg, baseUrls),
     };
   }
 
@@ -345,17 +358,27 @@ function detectDataSource(
     return {
       sourceKind: "axios",
       method: method !== undefined && HTTP_METHODS.has(method) ? method.toUpperCase() : null,
-      endpoint: literalText(firstArg) ?? "<dynamic>",
+      ...resolveEndpoint(firstArg, baseUrls),
     };
   }
 
   if (callee === "useQuery" || callee === "useMutation" || callee === "useInfiniteQuery") {
-    // Endpoint is inside the queryFn; surface the query key as the identity.
-    return { sourceKind: "react-query", method: null, endpoint: literalText(firstArg) ?? call.getArguments()[0]?.getText().slice(0, 80) ?? "<dynamic>" };
+    // Endpoint lives inside the queryFn (followed in step 1.3); the query key
+    // is the identity meanwhile.
+    const resolved = resolveEndpoint(firstArg, baseUrls);
+    return {
+      sourceKind: "react-query",
+      method: null,
+      ...resolved,
+      endpoint:
+        resolved.resolved === "none"
+          ? (firstArg?.getText().slice(0, 80) ?? "<dynamic>")
+          : resolved.endpoint,
+    };
   }
 
   if (callee === "useSWR") {
-    return { sourceKind: "swr", method: "GET", endpoint: literalText(firstArg) ?? "<dynamic>" };
+    return { sourceKind: "swr", method: "GET", ...resolveEndpoint(firstArg, baseUrls) };
   }
 
   return null;

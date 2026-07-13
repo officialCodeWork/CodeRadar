@@ -312,7 +312,14 @@
         },
         "endpoint": {
           "type": "string",
-          "description": "The endpoint as written in source — may contain template placeholders, e.g. \"/api/users/${id}\"."
+          "description": "Canonical endpoint pattern: constants folded, template placeholders normalized to :param form — e.g. \"/api/users/:id\". This is the value attribution and cross-graph joins match on."
+        },
+        "raw": {
+          "type": "string",
+          "description": "The endpoint expression exactly as written in source."
+        },
+        "resolved": {
+          "$ref": "#/definitions/EndpointResolution"
         }
       },
       "required": [
@@ -322,6 +329,8 @@
         "loc",
         "method",
         "name",
+        "raw",
+        "resolved",
         "sourceKind"
       ],
       "additionalProperties": false,
@@ -338,6 +347,15 @@
         "websocket",
         "unknown"
       ]
+    },
+    "EndpointResolution": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of an endpoint was statically resolvable."
     },
     "StateNode": {
       "type": "object",

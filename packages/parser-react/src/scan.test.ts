@@ -39,10 +39,15 @@ describe("scanReact on the demo app", () => {
     expect(instanceOf?.to).toBe(inst.definitionId);
   });
 
-  it("extracts endpoints with methods", () => {
-    const sources = graph.nodes.filter((n) => n.kind === "data-source");
-    const endpoints = sources.map((s) => (s.kind === "data-source" ? `${s.method} ${s.endpoint}` : ""));
-    expect(endpoints.sort()).toEqual(["DELETE /api/users/${user.id}", "GET /api/users"]);
+  it("extracts endpoints with methods, resolution, and raw source", () => {
+    const sources = graph.nodes.flatMap((n) => (n.kind === "data-source" ? [n] : []));
+    const endpoints = sources.map((s) => `${s.method} ${s.endpoint} (${s.resolved})`);
+    expect(endpoints.sort()).toEqual([
+      "DELETE /api/users/:id (partial)",
+      "GET /api/users (full)",
+    ]);
+    const del = sources.find((s) => s.method === "DELETE");
+    expect(del?.raw).toBe("`/api/users/${user.id}`");
   });
 
   it("matches screenshot text to UserList via the envelope", () => {
@@ -57,7 +62,7 @@ describe("scanReact on the demo app", () => {
     const lineage = result.candidates[0]?.value;
     expect(lineage?.dataSources.map((d) => d.endpoint).sort()).toEqual([
       "/api/users",
-      "/api/users/${user.id}",
+      "/api/users/:id",
     ]);
     expect(lineage?.state.map((s) => s.name).sort()).toEqual(["loading", "users"]);
     expect(lineage?.events.map((e) => e.event)).toEqual(["onClick"]);

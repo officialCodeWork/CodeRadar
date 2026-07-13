@@ -1,0 +1,21 @@
+{
+  "failureMode": "C3",
+  "note": "Runtime-valued endpoints: `/api/orders/${orderId}` must resolve to the pattern /api/orders/:orderId (partial), and `/api/${entity}/list` — where even the resource segment is dynamic — to /api/:entity/list. The shape is preserved, the unknowns are flagged, and nothing collapses to <dynamic>.",
+  "expect": {
+    "components": [{ "name": "OrderDetail", "instances": 0 }],
+    "attributions": [
+      {
+        "component": "OrderDetail",
+        "endpoints": ["/api/orders/:orderId", "/api/:entity/list"]
+      }
+    ],
+    "forbidden": [
+      {
+        "component": "OrderDetail",
+        "endpoint": "<dynamic>",
+        "note": "template endpoints with known shape must not collapse to dynamic"
+      }
+    ],
+    "queries": [{ "terms": ["Order detail"], "status": "ok", "top": "OrderDetail" }]
+  }
+}

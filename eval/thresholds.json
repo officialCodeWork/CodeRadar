@@ -1,5 +1,7 @@
 {
   "maxFail": 0,
   "maxUnexpectedPass": 0,
-  "minMatchAccuracy": 1.0
+  "minMatchAccuracy": 1.0,
+  "minLineagePrecision": 0.9,
+  "minLineageRecall": 0.8
 }

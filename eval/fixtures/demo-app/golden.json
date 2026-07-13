@@ -10,11 +10,11 @@
     "attributions": [
       {
         "component": "UserList",
-        "endpoints": ["/api/users", "/api/users/${user.id}"]
+        "endpoints": ["/api/users", "/api/users/:id"]
       },
       {
         "component": "UserCard",
-        "endpoints": ["/api/users/${user.id}"]
+        "endpoints": ["/api/users/:id"]
       }
     ],
     "queries": [
