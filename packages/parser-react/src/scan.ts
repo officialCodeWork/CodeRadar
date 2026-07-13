@@ -8,6 +8,7 @@ import {
   type LineageGraph,
   type LineageNode,
   nodeId,
+  type RenderedText,
   type SourceLocation,
 } from "@coderadar/core";
 import {
@@ -25,6 +26,7 @@ import {
 } from "ts-morph";
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint } from "./endpoint.js";
+import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
 
 export interface ScanOptions {
@@ -43,6 +45,12 @@ export interface ScanOptions {
    * for clients the heuristic can't see. Heuristic detection runs regardless.
    */
   apiWrappers?: string[];
+  /**
+   * Locale-file configuration. When set, t("key") / <Trans i18nKey> call
+   * sites expand into renderedText entries for every locale, so screenshots
+   * in any language match.
+   */
+  i18n?: I18nOptions;
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -97,6 +105,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
   }
 
   const wrappers = detectWrappers(project, options.apiWrappers ?? []);
+  const localeTable = options.i18n !== undefined ? loadLocaleTable(root, options.i18n) : null;
   const nodes = new Map<string, LineageNode>();
   const edges: LineageEdge[] = [];
   const pendingInstances: PendingInstance[] = [];
@@ -124,7 +133,10 @@ export function scanReact(options: ScanOptions): LineageGraph {
           loc: decl.loc,
           exportName: decl.exportName,
           props: extractProps(decl.fn),
-          renderedText: extractRenderedText(decl.fn),
+          renderedText: [
+            ...extractRenderedText(decl.fn),
+            ...(localeTable !== null ? i18nRenderedText(decl.fn, localeTable) : []),
+          ],
           rendersComponents: extractRenderedComponents(decl.fn),
         });
         collectInstanceSites(decl, id, file, pendingInstances);
@@ -229,21 +241,21 @@ function extractProps(fn: FunctionLike): string[] {
   return [first.getName()];
 }
 
-function extractRenderedText(fn: FunctionLike): string[] {
-  const texts = new Set<string>();
+function extractRenderedText(fn: FunctionLike): RenderedText[] {
+  const entries = new Map<string, RenderedText>();
   for (const jsxText of fn.getDescendantsOfKind(SyntaxKind.JsxText)) {
     const text = jsxText.getText().replace(/\s+/g, " ").trim();
-    if (text.length > 0) texts.add(text);
+    if (text.length > 0) entries.set(`jsx:${text}`, { text, source: "jsx" });
   }
   for (const attr of fn.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
     if (!TEXT_ATTRIBUTES.has(attr.getNameNode().getText())) continue;
     const init = attr.getInitializer();
     if (init !== undefined && Node.isStringLiteral(init)) {
       const text = init.getLiteralValue().trim();
-      if (text.length > 0) texts.add(text);
+      if (text.length > 0) entries.set(`attribute:${text}`, { text, source: "attribute" });
     }
   }
-  return [...texts];
+  return [...entries.values()];
 }
 
 function extractRenderedComponents(fn: FunctionLike): string[] {

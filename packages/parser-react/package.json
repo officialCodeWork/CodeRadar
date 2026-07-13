@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@coderadar/core": "workspace:*",
-    "ts-morph": "^24.0.0"
+    "ts-morph": "^24.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

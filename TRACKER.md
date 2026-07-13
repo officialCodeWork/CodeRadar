@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 1 — Robust extraction
-- **Next step:** 1.4 — i18n adapter
-- **Done:** 0.1–0.4, 1.1–1.3
+- **Next step:** 1.5 — Rendered-text hardening
+- **Done:** 0.1–0.4, 1.1–1.4
 - **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
 
 ## What CodeRadar is
@@ -110,7 +110,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 **Build:** when `useQuery`/`useMutation`/`useSWR`'s fn argument is a reference, resolve to its declaration (same file or import) and extract the endpoint from its body via 1.1/1.2. Data source records both the query key and the resolved endpoint; mutations get `method` from the inner call.
 **Accept:** fixture `c5-queryfn-indirection` green (queryFn in a separate `api/users.ts`).
 
-### [ ] 1.4 i18n adapter
+### [x] 1.4 i18n adapter
 **Failure modes:** A2
 **Build:**
 - Scan option `i18n: { localeGlobs: string[], defaultLocale: string }`; parse JSON/YAML locale files into a key → string-per-locale table (nested keys flattened, `{{var}}` placeholders preserved).

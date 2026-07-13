@@ -131,9 +131,9 @@
         "renderedText": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/definitions/RenderedText"
           },
-          "description": "Static text visible in the rendered output (JSX text, string literals in attributes like placeholder/label/title/alt/aria-label). This is the primary signal for matching a screenshot to a component."
+          "description": "Static text visible in the rendered output — the primary signal for matching a screenshot to a component. i18n keys are expanded to one entry per locale, so a French screenshot matches the same component."
         },
         "rendersComponents": {
           "type": "array",
@@ -179,6 +179,41 @@
       ],
       "additionalProperties": false,
       "description": "Where a node lives in the codebase."
+    },
+    "RenderedText": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "jsx",
+            "attribute",
+            "i18n"
+          ],
+          "description": "Where the text comes from: JSX children, a string attribute (placeholder/label/title/alt/aria-label), or an i18n key resolved against locale files."
+        },
+        "key": {
+          "type": "string",
+          "description": "i18n entries only: the translation key, e.g. \"team.title\"."
+        },
+        "locale": {
+          "type": "string",
+          "description": "i18n entries only: which locale this text belongs to."
+        },
+        "branch": {
+          "type": "string",
+          "description": "Condition source text when the text renders only in a branch (step 1.5)."
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "One piece of text a component can render, with its provenance."
     },
     "InstanceNode": {
       "type": "object",

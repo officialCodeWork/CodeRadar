@@ -40,7 +40,7 @@ function main(): void {
     }
     const golden = JSON.parse(fs.readFileSync(goldenPath, "utf-8")) as Golden;
     const appDir = path.resolve(fixtureDir, golden.app ?? "./app");
-    const graph = resolveHookEdges(scanReact({ root: appDir }));
+    const graph = resolveHookEdges(scanReact({ root: appDir, ...(golden.scan ?? {}) }));
     results.push(runChecks(name, golden, graph));
   }
 
