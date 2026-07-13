@@ -116,6 +116,11 @@ export interface DataSourceNode extends BaseNode {
   /** The endpoint expression exactly as written in source. */
   raw: string;
   resolved: EndpointResolution;
+  /**
+   * react-query/SWR cache key as written in source (e.g. `["users"]`) —
+   * the identity used for cache-sharing analysis (C7) alongside the endpoint.
+   */
+  queryKey?: string;
 }
 
 export type StateKind = "useState" | "useReducer" | "context" | "redux" | "zustand" | "unknown";

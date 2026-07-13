@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 1 — Robust extraction
-- **Next step:** 1.3 — react-query / SWR queryFn following
-- **Done:** 0.1–0.4, 1.1, 1.2
+- **Next step:** 1.4 — i18n adapter
+- **Done:** 0.1–0.4, 1.1–1.3
 - **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
 
 ## What CodeRadar is
@@ -105,7 +105,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - Wrapper chains up to depth 3 (`useApi → apiClient.get → fetch`).
 **Accept:** fixture `c2-api-wrapper` (three-layer wrapper) green; wrapper detection has unit tests for both heuristic and config paths.
 
-### [ ] 1.3 react-query / SWR queryFn following
+### [x] 1.3 react-query / SWR queryFn following
 **Failure modes:** C5
 **Build:** when `useQuery`/`useMutation`/`useSWR`'s fn argument is a reference, resolve to its declaration (same file or import) and extract the endpoint from its body via 1.1/1.2. Data source records both the query key and the resolved endpoint; mutations get `method` from the inner call.
 **Accept:** fixture `c5-queryfn-indirection` green (queryFn in a separate `api/users.ts`).

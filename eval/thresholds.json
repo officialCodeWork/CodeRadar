@@ -3,5 +3,5 @@
   "maxUnexpectedPass": 0,
   "minMatchAccuracy": 1,
   "minLineagePrecision": 0.9,
-  "minLineageRecall": 0.85
+  "minLineageRecall": 0.88
 }

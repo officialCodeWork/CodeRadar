@@ -320,6 +320,10 @@
         },
         "resolved": {
           "$ref": "#/definitions/EndpointResolution"
+        },
+        "queryKey": {
+          "type": "string",
+          "description": "react-query/SWR cache key as written in source (e.g. `[\"users\"]`) — the identity used for cache-sharing analysis (C7) alongside the endpoint."
         }
       },
       "required": [
