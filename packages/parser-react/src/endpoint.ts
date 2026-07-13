@@ -12,7 +12,7 @@
  */
 
 import type { EndpointResolution } from "@coderadar/core";
-import { Node, SyntaxKind } from "ts-morph";
+import { type CallExpression, Node, SyntaxKind } from "ts-morph";
 
 export interface ResolvedEndpoint {
   endpoint: string;
@@ -153,6 +153,34 @@ function resolveObjectLiteral(node: Node | undefined, depth: number): import("ts
     }
   }
   return null;
+}
+
+/**
+ * Resolve a URL expression inside a wrapper body, where the wrapper's own
+ * parameters become :param placeholders. `request(path)` with body
+ * `fetch(\`${API_BASE}${path}\`)` yields "/api:path". Null when the
+ * expression has no statically-known shape at all.
+ */
+export function resolveUrlTemplate(node: Node, paramNames: ReadonlySet<string>): string | null {
+  if (Node.isIdentifier(node) && paramNames.has(node.getText())) {
+    return `:${node.getText()}`;
+  }
+  const full = resolveStringValue(node, 0);
+  if (full !== null) return full;
+  return resolvePattern(node);
+}
+
+/** The statically-visible HTTP method of a fetch(url, { method: ... }) call. */
+export function fetchMethod(call: CallExpression): string {
+  const optionsArg = call.getArguments()[1];
+  if (optionsArg !== undefined && Node.isObjectLiteralExpression(optionsArg)) {
+    const methodProp = optionsArg.getProperty("method");
+    if (methodProp !== undefined && Node.isPropertyAssignment(methodProp)) {
+      const value = resolveStringValue(methodProp.getInitializer(), 0);
+      if (value !== null) return value.toUpperCase();
+    }
+  }
+  return "GET";
 }
 
 function stripBaseUrls(endpoint: string, baseUrls: string[]): string {

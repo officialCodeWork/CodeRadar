@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 1 — Robust extraction
-- **Next step:** 1.2 — API-client wrapper adapter
-- **Done:** 0.1–0.4, 1.1
+- **Next step:** 1.3 — react-query / SWR queryFn following
+- **Done:** 0.1–0.4, 1.1, 1.2
 - **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
 
 ## What CodeRadar is
@@ -97,7 +97,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - `DataSourceNode` gains `{ pattern: string, resolved: "full" | "partial" | "none", raw: string }`.
 **Accept:** fixtures `c2-endpoint-constants`, `c3-dynamic-endpoints` green; lineage precision holds ≥ 0.90 on all existing fixtures.
 
-### [ ] 1.2 API-client wrapper adapter
+### [x] 1.2 API-client wrapper adapter
 **Failure modes:** C2 (wrapper half)
 **Build:**
 - Detection heuristic: a function/method whose body reaches `fetch`/`axios` and takes a path-like parameter → classified as an API wrapper; its call sites become data sources with the path argument resolved per 1.1.
