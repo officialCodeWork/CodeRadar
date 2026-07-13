@@ -51,6 +51,13 @@ export interface ScanOptions {
    * in any language match.
    */
   i18n?: I18nOptions;
+  /**
+   * Package names whose components should still produce instances even
+   * though their definitions live outside the repo (e.g. ["@acme/ui"]).
+   * Such instances are flagged "external-definition" — the usage site is
+   * ours even when the definition isn't (failure mode A5).
+   */
+  designSystemPackages?: string[];
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -72,6 +79,14 @@ interface PendingInstance {
   /** Node id of the enclosing component/hook declaration. */
   ownerId: string;
   file: string;
+  /** The JSX element itself — used for import resolution and nesting. */
+  element: JsxOpeningElement | JsxSelfClosingElement;
+  /**
+   * Index (into the global pending list) of the nearest enclosing component
+   * call site in the same body: <Card><Button/></Card> → Button's parent is
+   * the Card site. Null at the body root (the renders edge covers the owner).
+   */
+  parentIndex: number | null;
 }
 
 const COMPONENT_NAME = /^[A-Z]/;
@@ -153,7 +168,14 @@ export function scanReact(options: ScanOptions): LineageGraph {
     collectHocAliases(sourceFile, hocAliases);
   }
 
-  materializeInstances(pendingInstances, nodes, addEdge, hocAliases);
+  materializeInstances(
+    pendingInstances,
+    nodes,
+    addEdge,
+    hocAliases,
+    options.designSystemPackages ?? [],
+    root,
+  );
 
   return {
     version: 2,
@@ -772,6 +794,7 @@ function collectInstanceSites(
   file: string,
   pendingInstances: PendingInstance[],
 ): void {
+  const bodyStart = pendingInstances.length;
   const record = (el: JsxOpeningElement | JsxSelfClosingElement): void => {
     const head = el.getTagNameNode().getText().split(".")[0];
     if (head === undefined || !COMPONENT_NAME.test(head)) return;
@@ -783,10 +806,38 @@ function collectInstanceSites(
         staticProps[attr.getNameNode().getText()] = init.getLiteralValue();
       }
     }
-    pendingInstances.push({ tagName: head, loc: locOf(el, file), staticProps, ownerId, file });
+    pendingInstances.push({
+      tagName: head,
+      loc: locOf(el, file),
+      staticProps,
+      ownerId,
+      file,
+      element: el,
+      parentIndex: null,
+    });
   };
   for (const el of body.getDescendantsOfKind(SyntaxKind.JsxOpeningElement)) record(el);
   for (const el of body.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement)) record(el);
+
+  // Same-body nesting: <Card><Button/></Card> → Button's parent site is Card.
+  const bodySites = pendingInstances.slice(bodyStart);
+  for (const site of bodySites) {
+    let ancestor: Node | undefined = site.element.getParent();
+    while (ancestor !== undefined && ancestor !== body && site.parentIndex === null) {
+      for (let i = 0; i < bodySites.length; i += 1) {
+        const candidate = bodySites[i];
+        if (candidate === undefined || candidate === site) continue;
+        const candidateElement: Node | undefined = Node.isJsxOpeningElement(candidate.element)
+          ? candidate.element.getParent() // the enclosing JsxElement
+          : candidate.element;
+        if (candidateElement !== undefined && candidateElement === ancestor) {
+          site.parentIndex = bodyStart + i;
+          break;
+        }
+      }
+      ancestor = ancestor.getParent();
+    }
+  }
 }
 
 /**
@@ -802,6 +853,8 @@ function materializeInstances(
   nodes: Map<string, LineageNode>,
   addEdge: (edge: LineageEdge) => void,
   hocAliases: ReadonlyMap<string, string>,
+  designSystemPackages: string[],
+  root: string,
 ): void {
   const definitionsByName = new Map<string, string>();
   for (const node of nodes.values()) {
@@ -810,19 +863,73 @@ function materializeInstances(
 
   // <Panel/> where Panel = connect(...)(PanelInner): resolve through the alias
   // chain (bounded — alias graphs are tiny and could in principle cycle).
-  const resolveAlias = (tagName: string): string => {
-    let name = tagName;
+  const resolveAlias = (name: string): string => {
+    let current = name;
     for (let hop = 0; hop < 3; hop += 1) {
-      const target = hocAliases.get(name);
+      const target = hocAliases.get(current);
       if (target === undefined) break;
-      name = target;
+      current = target;
     }
-    return name;
+    return current;
   };
 
-  for (const pending of pendingInstances) {
-    const definitionId = definitionsByName.get(resolveAlias(pending.tagName));
-    if (definitionId === undefined || definitionId === pending.ownerId) continue;
+  /**
+   * Resolve a tag to its definition. Priority: the file's imports (barrels,
+   * renames, and default exports resolve via getExportedDeclarations), then
+   * same-file/global name lookup, then configured design-system packages.
+   */
+  const resolveTag = (
+    pending: PendingInstance,
+  ): { definitionId: string; external: boolean } | null => {
+    const sourceFile = pending.element.getSourceFile();
+    const importDecl = sourceFile.getImportDeclarations().find((decl) => {
+      if (decl.getDefaultImport()?.getText() === pending.tagName) return true;
+      return decl.getNamedImports().some((named) => (named.getAliasNode()?.getText() ?? named.getName()) === pending.tagName);
+    });
+
+    if (importDecl !== undefined) {
+      const target = importDecl.getModuleSpecifierSourceFile();
+      const specifier = importDecl.getModuleSpecifierValue();
+      const inNodeModules = target?.getFilePath().includes("node_modules") ?? false;
+      if (target !== undefined && !inNodeModules) {
+        const named = importDecl
+          .getNamedImports()
+          .find((n) => (n.getAliasNode()?.getText() ?? n.getName()) === pending.tagName);
+        const importedName = named !== undefined ? named.getName() : "default";
+        for (const declaration of target.getExportedDeclarations().get(importedName) ?? []) {
+          const declName = Node.hasName(declaration) ? declaration.getName() : undefined;
+          if (declName === undefined) continue;
+          const declFile = toPosix(path.relative(root, declaration.getSourceFile().getFilePath()));
+          const resolvedName = resolveAlias(declName);
+          const candidate = nodeId("component", declFile, resolvedName);
+          if (nodes.has(candidate)) return { definitionId: candidate, external: false };
+        }
+      }
+      const isDesignSystem = designSystemPackages.some(
+        (pkg) => specifier === pkg || specifier.startsWith(`${pkg}/`),
+      );
+      if (isDesignSystem || inNodeModules) {
+        return { definitionId: `external:${specifier}#${pending.tagName}`, external: true };
+      }
+      return null; // imported from an unknown, unconfigured module — not ours
+    }
+
+    // Same file first, then unique-name fallback across the project.
+    const resolvedName = resolveAlias(pending.tagName);
+    const sameFile = nodeId("component", pending.file, resolvedName);
+    if (nodes.has(sameFile)) return { definitionId: sameFile, external: false };
+    const global = definitionsByName.get(resolvedName);
+    return global !== undefined ? { definitionId: global, external: false } : null;
+  };
+
+  const idByIndex: Array<string | null> = [];
+  const created: InstanceNode[] = [];
+  for (const [index, pending] of pendingInstances.entries()) {
+    const resolved = resolveTag(pending);
+    if (resolved === null || resolved.definitionId === pending.ownerId) {
+      idByIndex[index] = null;
+      continue;
+    }
 
     let id = instanceId(pending.file, pending.loc.line, pending.tagName);
     let suffix = 1;
@@ -835,13 +942,29 @@ function materializeInstances(
       kind: "instance",
       name: pending.tagName,
       loc: pending.loc,
-      definitionId,
+      definitionId: resolved.definitionId,
       parentInstanceId: null,
       staticProps: pending.staticProps,
+      ...(resolved.external ? { flags: ["external-definition"] } : {}),
     };
     nodes.set(id, instance);
+    idByIndex[index] = id;
+    created.push(instance);
     addEdge({ from: pending.ownerId, to: id, kind: "renders" });
-    addEdge({ from: id, to: definitionId, kind: "instance-of" });
+    if (!resolved.external) {
+      addEdge({ from: id, to: resolved.definitionId, kind: "instance-of" });
+    }
+  }
+
+  // Second pass: same-body nesting resolved now that every id exists.
+  for (const [index, pending] of pendingInstances.entries()) {
+    const id = idByIndex[index];
+    if (id === null || id === undefined || pending.parentIndex === null) continue;
+    const parentId = idByIndex[pending.parentIndex];
+    const instance = created.find((n) => n.id === id);
+    if (instance !== undefined && parentId !== null && parentId !== undefined) {
+      instance.parentInstanceId = parentId;
+    }
   }
 }
 

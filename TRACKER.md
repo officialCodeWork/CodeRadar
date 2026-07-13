@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 2 — Instance graph & cross-file data flow
-- **Next step:** 2.1 — Instance tree construction
-- **Done:** 0.1–0.4, 1.1–1.6
+- **Next step:** 2.2 — Prop-flow: data attribution per instance
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1
 - **Gates passed:** Gate 0 (CI + red-path, PRs #5/#6) · Gate 1 (precision 1.000 ≥ 0.90, recall 0.895 ≥ 0.80 across C2/C3/C5/A2/A7/A8/D4, zero forbidden hits)
 
 ## What CodeRadar is
@@ -140,7 +140,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 
 The heart of the project. C1 and B1 live here.
 
-### [ ] 2.1 Instance tree construction
+### [x] 2.1 Instance tree construction
 **Failure modes:** C1 (graph half), A5
 **Build:** cross-file pass in `parser-react`:
 - Resolve every JSX tag to its component definition through imports (including `export { X as Y }`, barrel files, default exports).
