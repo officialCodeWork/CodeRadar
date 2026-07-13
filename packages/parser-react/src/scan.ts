@@ -109,6 +109,8 @@ export function scanReact(options: ScanOptions): LineageGraph {
   const nodes = new Map<string, LineageNode>();
   const edges: LineageEdge[] = [];
   const pendingInstances: PendingInstance[] = [];
+  /** HOC-wrapped alias → inner component name, e.g. Panel → PanelInner (connect). */
+  const hocAliases = new Map<string, string>();
   const addEdge = (edge: LineageEdge): void => {
     if (!edges.some((e) => e.from === edge.from && e.to === edge.to && e.kind === edge.kind)) {
       edges.push(edge);
@@ -139,16 +141,19 @@ export function scanReact(options: ScanOptions): LineageGraph {
           ],
           rendersComponents: extractRenderedComponents(decl.fn),
         });
-        collectInstanceSites(decl, id, file, pendingInstances);
+        collectInstanceSites(decl.fn, id, file, pendingInstances);
       } else {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl, id, file, nodes, addEdge, baseUrls, wrappers);
+      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers);
     }
+
+    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances);
+    collectHocAliases(sourceFile, hocAliases);
   }
 
-  materializeInstances(pendingInstances, nodes, addEdge);
+  materializeInstances(pendingInstances, nodes, addEdge, hocAliases);
 
   return {
     version: 2,
@@ -241,7 +246,7 @@ function extractProps(fn: FunctionLike): string[] {
   return [first.getName()];
 }
 
-function extractRenderedText(fn: FunctionLike): RenderedText[] {
+function extractRenderedText(fn: Node): RenderedText[] {
   const entries = new Map<string, RenderedText>();
   const add = (entry: RenderedText): void => {
     entries.set(`${entry.source}:${entry.text}:${entry.branch ?? ""}`, entry);
@@ -301,7 +306,7 @@ function extractRenderedText(fn: FunctionLike): RenderedText[] {
  * `cond && <jsx>` gate, or an enclosing if-statement (early-return pattern).
  * Ternary else-branches are negated. Empty object when unconditional.
  */
-function branchTag(node: Node, boundary: FunctionLike): { branch?: string } {
+function branchTag(node: Node, boundary: Node): { branch?: string } {
   let current: Node | undefined = node;
   while (current !== undefined && current !== boundary) {
     const parent: Node | undefined = current.getParent();
@@ -326,7 +331,7 @@ function branchTag(node: Node, boundary: FunctionLike): { branch?: string } {
   return {};
 }
 
-function extractRenderedComponents(fn: FunctionLike): string[] {
+function extractRenderedComponents(fn: Node): string[] {
   const names = new Set<string>();
   const record = (tagName: string): void => {
     const head = tagName.split(".")[0];
@@ -347,7 +352,8 @@ function extractRenderedComponents(fn: FunctionLike): string[] {
  * and same-file hook calls.
  */
 function extractBodyFacts(
-  decl: Declaration,
+  declName: string,
+  body: Node,
   ownerId: string,
   file: string,
   nodes: Map<string, LineageNode>,
@@ -358,9 +364,9 @@ function extractBodyFacts(
   // A wrapper's own body is plumbing: its URL is a parameter placeholder, so a
   // data source emitted here would attribute ":path" to every consumer. Call
   // sites get the real, substituted endpoint instead.
-  const declIsWrapper = wrappers.has(decl.name);
+  const declIsWrapper = wrappers.has(declName);
 
-  for (const call of decl.fn.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+  for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = call.getExpression().getText();
 
     const dataSource = declIsWrapper ? null : detectDataSource(call, callee, baseUrls, wrappers);
@@ -387,7 +393,7 @@ function extractBodyFacts(
     const stateKind = detectState(callee);
     if (stateKind !== null) {
       const stateName = stateVariableName(call) ?? callee;
-      const stId = nodeId("state", file, `${decl.name}.${stateName}`);
+      const stId = nodeId("state", file, `${declName}.${stateName}`);
       if (!nodes.has(stId)) {
         nodes.set(stId, {
           id: stId,
@@ -407,16 +413,22 @@ function extractBodyFacts(
     }
   }
 
-  for (const attr of decl.fn.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
+  for (const attr of body.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
     const attrName = attr.getNameNode().getText();
     if (!/^on[A-Z]/.test(attrName)) continue;
     const init = attr.getInitializer();
     let handler: string | null = null;
     if (init !== undefined && Node.isJsxExpression(init)) {
       const expr = init.getExpression();
-      if (expr !== undefined && Node.isIdentifier(expr)) handler = expr.getText();
+      // Plain references (handleDelete) and method references (this.refresh).
+      if (
+        expr !== undefined &&
+        (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr))
+      ) {
+        handler = expr.getText();
+      }
     }
-    const evId = nodeId("event", file, `${decl.name}.${attrName}${handler !== null ? `:${handler}` : ""}`);
+    const evId = nodeId("event", file, `${declName}.${attrName}${handler !== null ? `:${handler}` : ""}`);
     if (!nodes.has(evId)) {
       nodes.set(evId, {
         id: evId,
@@ -616,9 +628,146 @@ function stateVariableName(call: CallExpression): string | null {
   return null;
 }
 
+const CLASS_COMPONENT_BASE = /(React\.)?(Pure)?Component/;
+
+/** Legacy class components: render() is the body, this.state is state, lifecycle fetches count. */
+function scanClassComponents(
+  sourceFile: SourceFile,
+  file: string,
+  nodes: Map<string, LineageNode>,
+  addEdge: (edge: LineageEdge) => void,
+  baseUrls: string[],
+  wrappers: WrapperRegistry,
+  localeTable: LocaleTable | null,
+  pendingInstances: PendingInstance[],
+): void {
+  for (const cls of sourceFile.getClasses()) {
+    const name = cls.getName();
+    if (name === undefined || !COMPONENT_NAME.test(name)) continue;
+    const heritage = cls.getExtends()?.getText() ?? "";
+    if (!CLASS_COMPONENT_BASE.test(heritage)) continue;
+
+    const id = nodeId("component", file, name);
+    const exportName = cls.isDefaultExport() ? "default" : cls.isExported() ? name : null;
+    const render = cls.getMethod("render");
+
+    if (render === undefined) {
+      nodes.set(id, {
+        id,
+        kind: "component",
+        name,
+        loc: locOf(cls, file),
+        exportName,
+        props: [],
+        renderedText: [],
+        rendersComponents: [],
+        flags: ["incomplete"],
+      });
+      continue;
+    }
+
+    nodes.set(id, {
+      id,
+      kind: "component",
+      name,
+      loc: locOf(cls, file),
+      exportName,
+      props: classProps(cls),
+      renderedText: [
+        ...extractRenderedText(render),
+        ...(localeTable !== null ? i18nRenderedText(render, localeTable) : []),
+      ],
+      rendersComponents: extractRenderedComponents(render),
+    });
+    collectInstanceSites(render, id, file, pendingInstances);
+    // Whole class body: lifecycle fetches (componentDidMount etc.) + render events.
+    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers);
+    extractClassState(cls, name, id, file, nodes, addEdge);
+  }
+}
+
+/** `this.props.<name>` accesses stand in for destructured props. */
+function classProps(cls: Node): string[] {
+  const props = new Set<string>();
+  for (const access of cls.getDescendantsOfKind(SyntaxKind.PropertyAccessExpression)) {
+    if (access.getExpression().getText() === "this.props") props.add(access.getName());
+  }
+  return [...props];
+}
+
+/** State keys from `state = {...}` property or `this.state = {...}` in the constructor. */
+function extractClassState(
+  cls: Node,
+  componentName: string,
+  ownerId: string,
+  file: string,
+  nodes: Map<string, LineageNode>,
+  addEdge: (edge: LineageEdge) => void,
+): void {
+  const stateKeys = new Map<string, Node>();
+  const collectKeys = (objectLiteral: Node): void => {
+    if (!Node.isObjectLiteralExpression(objectLiteral)) return;
+    for (const member of objectLiteral.getProperties()) {
+      if (Node.isPropertyAssignment(member) || Node.isShorthandPropertyAssignment(member)) {
+        stateKeys.set(member.getName(), member);
+      }
+    }
+  };
+  for (const property of cls.getDescendantsOfKind(SyntaxKind.PropertyDeclaration)) {
+    if (property.getName() !== "state") continue;
+    const init = property.getInitializer();
+    if (init !== undefined) collectKeys(init);
+  }
+  for (const assignment of cls.getDescendantsOfKind(SyntaxKind.BinaryExpression)) {
+    if (assignment.getLeft().getText() === "this.state") collectKeys(assignment.getRight());
+  }
+  for (const [key, node] of stateKeys) {
+    const stId = nodeId("state", file, `${componentName}.${key}`);
+    if (!nodes.has(stId)) {
+      nodes.set(stId, {
+        id: stId,
+        kind: "state",
+        name: key,
+        loc: locOf(node, file),
+        stateKind: "class-state",
+      });
+    }
+    addEdge({ from: ownerId, to: stId, kind: "reads-state" });
+  }
+}
+
+const HOC_NAMES = /^(connect|withRouter|memo|forwardRef|observer|inject|withTranslation|styled)\b/;
+
+/**
+ * `const Panel = connect(mapState)(PanelInner)` — record Panel → PanelInner so
+ * <Panel/> call sites resolve to the inner component's definition.
+ */
+function collectHocAliases(sourceFile: SourceFile, hocAliases: Map<string, string>): void {
+  for (const variable of sourceFile.getVariableDeclarations()) {
+    const name = variable.getName();
+    if (!COMPONENT_NAME.test(name)) continue;
+    const init = variable.getInitializer();
+    if (init === undefined || !Node.isCallExpression(init)) continue;
+    if (unwrapFunction(init) !== undefined) continue; // inline-fn HOCs are handled as declarations
+    const outermostCallee = init.getExpression().getText();
+    if (!HOC_NAMES.test(outermostCallee)) continue;
+    const inner = findComponentArgument(init);
+    if (inner !== null && inner !== name) hocAliases.set(name, inner);
+  }
+}
+
+/** First capitalized identifier argument anywhere in a (possibly curried) call chain. */
+function findComponentArgument(call: Node): string | null {
+  if (!Node.isCallExpression(call)) return null;
+  for (const arg of call.getArguments()) {
+    if (Node.isIdentifier(arg) && COMPONENT_NAME.test(arg.getText())) return arg.getText();
+  }
+  return findComponentArgument(call.getExpression());
+}
+
 /** Record every JSX call site of a capitalized component within a declaration body. */
 function collectInstanceSites(
-  decl: Declaration,
+  body: Node,
   ownerId: string,
   file: string,
   pendingInstances: PendingInstance[],
@@ -636,8 +785,8 @@ function collectInstanceSites(
     }
     pendingInstances.push({ tagName: head, loc: locOf(el, file), staticProps, ownerId, file });
   };
-  for (const el of decl.fn.getDescendantsOfKind(SyntaxKind.JsxOpeningElement)) record(el);
-  for (const el of decl.fn.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement)) record(el);
+  for (const el of body.getDescendantsOfKind(SyntaxKind.JsxOpeningElement)) record(el);
+  for (const el of body.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement)) record(el);
 }
 
 /**
@@ -652,14 +801,27 @@ function materializeInstances(
   pendingInstances: PendingInstance[],
   nodes: Map<string, LineageNode>,
   addEdge: (edge: LineageEdge) => void,
+  hocAliases: ReadonlyMap<string, string>,
 ): void {
   const definitionsByName = new Map<string, string>();
   for (const node of nodes.values()) {
     if (node.kind === "component") definitionsByName.set(node.name, node.id);
   }
 
+  // <Panel/> where Panel = connect(...)(PanelInner): resolve through the alias
+  // chain (bounded — alias graphs are tiny and could in principle cycle).
+  const resolveAlias = (tagName: string): string => {
+    let name = tagName;
+    for (let hop = 0; hop < 3; hop += 1) {
+      const target = hocAliases.get(name);
+      if (target === undefined) break;
+      name = target;
+    }
+    return name;
+  };
+
   for (const pending of pendingInstances) {
-    const definitionId = definitionsByName.get(pending.tagName);
+    const definitionId = definitionsByName.get(resolveAlias(pending.tagName));
     if (definitionId === undefined || definitionId === pending.ownerId) continue;
 
     let id = instanceId(pending.file, pending.loc.line, pending.tagName);

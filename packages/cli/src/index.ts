@@ -43,6 +43,10 @@ program
     );
     for (const [kind, count] of [...counts].sort()) console.log(`  ${kind}: ${count}`);
     console.log(`  edges: ${graph.edges.length}`);
+    const incomplete = graph.nodes.filter((n) => n.flags?.includes("incomplete")).length;
+    if (incomplete > 0) {
+      console.log(`  incomplete: ${incomplete} node(s) could not be fully parsed`);
+    }
     console.log(`Graph written to ${opts.out}`);
   });
 

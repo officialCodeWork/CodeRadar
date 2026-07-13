@@ -4,10 +4,10 @@
 
 ## Status
 
-- **Current phase:** 1 — Robust extraction
-- **Next step:** 1.6 — Legacy patterns & graceful degradation
-- **Done:** 0.1–0.4, 1.1–1.5
-- **Gates passed:** Gate 0 (CI green + red-path verified on PRs #5/#6)
+- **Current phase:** 2 — Instance graph & cross-file data flow
+- **Next step:** 2.1 — Instance tree construction
+- **Done:** 0.1–0.4, 1.1–1.6
+- **Gates passed:** Gate 0 (CI + red-path, PRs #5/#6) · Gate 1 (precision 1.000 ≥ 0.90, recall 0.895 ≥ 0.80 across C2/C3/C5/A2/A7/A8/D4, zero forbidden hits)
 
 ## What CodeRadar is
 
@@ -126,7 +126,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - Normalization utility in core (shared with the Phase 4 matcher): lowercase, collapse whitespace, strip punctuation, naive singular/plural folding.
 **Accept:** fixtures `a7-transformed-text`, `a8-conditional-text` green (error-state text findable and tagged with its branch).
 
-### [ ] 1.6 Legacy patterns & graceful degradation
+### [x] 1.6 Legacy patterns & graceful degradation
 **Failure modes:** D4
 **Build:**
 - Class components: `render()` treated as the body; `this.state`/`setState` → state nodes; lifecycle fetches detected.
