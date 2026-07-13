@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 0 — Foundations
-- **Next step:** 0.4 — CI pipeline
-- **Done:** 0.1, 0.2, 0.3
+- **Next step:** 1.1 — Endpoint resolution (constants, templates, patterns)
+- **Done:** 0.1, 0.2, 0.3, 0.4
 - **Gates passed:** none yet (Gate 0 completes with 0.4)
 
 ## What CodeRadar is
@@ -76,7 +76,7 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 - CLI: `scan` records commit SHA (via `git rev-parse`, `dirty` from `git status`).
 **Accept:** round-trip test (scan → save → load → deep-equal); schema drift test; `coderadar scan` output includes SHA.
 
-### [ ] 0.4 CI pipeline
+### [x] 0.4 CI pipeline
 **Failure modes:** D1, process
 **Build:** GitHub Actions workflow: install (pnpm cache) → build → typecheck → vitest unit tests → `pnpm eval` → upload scorecard as artifact. Threshold ratchet rule documented in the workflow file header (raising OK; lowering needs PR-body justification).
 **Accept:** CI green on a PR; a deliberately broken fixture in a test branch turns it red. **Gate 0 passes.**
