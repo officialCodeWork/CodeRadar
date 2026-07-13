@@ -1,0 +1,57 @@
+# CodeRadar CI — the Gate 0 pipeline.
+#
+# Every PR must pass: build (strict TS), typecheck, unit tests, and the eval
+# gate (eval/thresholds.json). The scorecard is uploaded as an artifact on
+# every run, pass or fail, so regressions are inspectable.
+#
+# Threshold ratchet rule (docs/testing-strategy.md): eval/thresholds.json
+# values may be RAISED in any PR; LOWERING one requires a written
+# justification in the PR body. Thresholds never loosen silently.
+
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads the packageManager field
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (strict TS)
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Eval gate
+        run: node eval/dist/run.js
+
+      - name: Upload scorecard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-scorecard
+          path: eval/scorecard.json
+          if-no-files-found: ignore
