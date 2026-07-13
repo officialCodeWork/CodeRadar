@@ -177,6 +177,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     root,
   );
   resolvePropFlow(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers);
+  resolveHandlerChains(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers, root);
 
   return {
     version: 2,
@@ -1104,6 +1105,212 @@ function resolvePropFlow(
           via: attr.getNameNode().getText(),
         });
       }
+    }
+  }
+}
+
+/**
+ * Handler resolution through props (TRACKER step 2.3, failure mode B1).
+ *
+ * <button onClick={onSave}> where onSave is a PROP means the real handler
+ * lives at a call site — possibly four components up:
+ *
+ *   SaveButton onClick={onSave} ← Toolbar onSave={onSaveDraft}
+ *     ← EditorPanel onSaveDraft={() => onPersist()} ← DraftEditor onPersist={persistDraft}
+ *       → persistDraft body → fetch POST /api/drafts
+ *
+ * Resolved handler bodies are mined for data sources, emitted as
+ * event --triggers--> data-source edges (via: the instance id whose call
+ * chain produced them). Chains dead after MAX_HANDLER_DEPTH levels flag the
+ * event "unresolved-prop-handler" — visible, never silent.
+ */
+const MAX_HANDLER_DEPTH = 4;
+
+function resolveHandlerChains(
+  pendingInstances: PendingInstance[],
+  instanceIds: Array<string | null>,
+  nodes: Map<string, LineageNode>,
+  edges: LineageEdge[],
+  addEdge: (edge: LineageEdge) => void,
+  baseUrls: string[],
+  wrappers: WrapperRegistry,
+  root: string,
+): void {
+  const instancesByDefinition = new Map<string, Array<{ pending: PendingInstance; id: string }>>();
+  for (const [index, pending] of pendingInstances.entries()) {
+    const id = instanceIds[index];
+    if (id === null || id === undefined) continue;
+    const instance = nodes.get(id);
+    if (instance === undefined || instance.kind !== "instance") continue;
+    const list = instancesByDefinition.get(instance.definitionId);
+    if (list) list.push({ pending, id });
+    else instancesByDefinition.set(instance.definitionId, [{ pending, id }]);
+  }
+
+  const fileOf = (node: Node): string =>
+    toPosix(path.relative(root, node.getSourceFile().getFilePath()));
+
+  // Expression-bodied arrows (`() => onPersist()`) ARE the call — descendants
+  // alone would miss them.
+  const callsWithin = (body: Node): Node[] => [
+    ...(Node.isCallExpression(body) ? [body] : []),
+    ...body.getDescendantsOfKind(SyntaxKind.CallExpression),
+  ];
+
+  /** Collect data-source ids from a handler body, creating nodes as needed. */
+  const minePropHandlerBody = (body: Node, sources: Set<string>): void => {
+    for (const call of callsWithin(body)) {
+      if (!Node.isCallExpression(call)) continue;
+      const detected = detectDataSource(call, call.getExpression().getText(), baseUrls, wrappers);
+      if (detected === null) continue;
+      const file = fileOf(call);
+      const dsId = nodeId("data-source", file, `${detected.sourceKind}:${detected.endpoint}`);
+      if (!nodes.has(dsId)) {
+        nodes.set(dsId, {
+          id: dsId,
+          kind: "data-source",
+          name: detected.endpoint,
+          loc: locOf(call, file),
+          sourceKind: detected.sourceKind,
+          method: detected.method,
+          endpoint: detected.endpoint,
+          raw: detected.raw,
+          resolved: detected.resolved,
+        });
+      }
+      sources.add(dsId);
+    }
+  };
+
+  /** The prop's property name + default initializer on a definition's params. */
+  const propBinding = (
+    definitionId: string,
+    localName: string,
+  ): { propertyName: string; defaultInit: Node | undefined } | null => {
+    const definition = nodes.get(definitionId);
+    if (definition === undefined || definition.kind !== "component") return null;
+    if (!definition.props.includes(localName)) return null;
+    // Re-locate the AST: find the binding element for the local name.
+    const anyInstance = instancesByDefinition.get(definitionId)?.[0];
+    const sourceFile =
+      anyInstance?.pending.element.getSourceFile().getProject().getSourceFiles()
+        .find((f) => toPosix(path.relative(root, f.getFilePath())) === definition.loc.file) ??
+      undefined;
+    if (sourceFile === undefined) return { propertyName: localName, defaultInit: undefined };
+    for (const binding of sourceFile.getDescendantsOfKind(SyntaxKind.BindingElement)) {
+      if (binding.getName() !== localName) continue;
+      return {
+        propertyName: binding.getPropertyNameNode()?.getText() ?? localName,
+        defaultInit: binding.getInitializer(),
+      };
+    }
+    return { propertyName: localName, defaultInit: undefined };
+  };
+
+  /** Resolve a handler expression at a call site; returns whether anything grounded. */
+  const resolveExpr = (
+    expr: Node,
+    ownerDefinitionId: string,
+    depth: number,
+    sources: Set<string>,
+  ): boolean => {
+    if (depth > MAX_HANDLER_DEPTH) return false;
+
+    if (Node.isArrowFunction(expr) || Node.isFunctionExpression(expr)) {
+      const body = expr.getBody();
+      if (body === undefined) return false;
+      minePropHandlerBody(body, sources);
+      let grounded = sources.size > 0;
+      // Arrow wrapping a prop call: () => onPersist()
+      for (const call of callsWithin(body)) {
+        if (!Node.isCallExpression(call)) continue;
+        const callee = call.getExpression();
+        const calleeName = Node.isPropertyAccessExpression(callee)
+          ? callee.getExpression().getText().endsWith("props")
+            ? callee.getName()
+            : null
+          : Node.isIdentifier(callee)
+            ? callee.getText()
+            : null;
+        if (calleeName !== null && resolveChain(ownerDefinitionId, calleeName, depth + 1, sources)) {
+          grounded = true;
+        }
+      }
+      return grounded;
+    }
+
+    if (Node.isPropertyAccessExpression(expr) && expr.getExpression().getText().endsWith("props")) {
+      return resolveChain(ownerDefinitionId, expr.getName(), depth + 1, sources);
+    }
+
+    if (Node.isIdentifier(expr)) {
+      for (const definition of expr.getDefinitionNodes()) {
+        if (Node.isFunctionDeclaration(definition)) {
+          const body = definition.getBody();
+          if (body !== undefined) {
+            minePropHandlerBody(body, sources);
+            return true;
+          }
+        }
+        if (Node.isVariableDeclaration(definition)) {
+          const init = definition.getInitializer();
+          if (init !== undefined && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
+            return resolveExpr(init, ownerDefinitionId, depth, sources);
+          }
+        }
+        if (Node.isBindingElement(definition) || Node.isParameterDeclaration(definition)) {
+          // The handler is itself a prop of the owner — continue up the tree.
+          return resolveChain(ownerDefinitionId, expr.getText(), depth + 1, sources);
+        }
+      }
+    }
+    return false;
+  };
+
+  /** Follow a prop named `localName` on `definitionId` up through its call sites. */
+  const resolveChain = (
+    definitionId: string,
+    localName: string,
+    depth: number,
+    sources: Set<string>,
+  ): boolean => {
+    if (depth > MAX_HANDLER_DEPTH) return false;
+    const binding = propBinding(definitionId, localName);
+    if (binding === null) return false;
+    let grounded = false;
+    for (const { pending } of instancesByDefinition.get(definitionId) ?? []) {
+      let expr: Node | undefined = binding.defaultInit;
+      for (const attr of pending.element.getAttributes()) {
+        if (!Node.isJsxAttribute(attr) || attr.getNameNode().getText() !== binding.propertyName) {
+          continue;
+        }
+        const init = attr.getInitializer();
+        expr = init !== undefined && Node.isJsxExpression(init) ? init.getExpression() : undefined;
+        break;
+      }
+      if (expr === undefined) continue;
+      if (resolveExpr(expr, pending.ownerId, depth, sources)) grounded = true;
+    }
+    return grounded;
+  };
+
+  // Events whose handler is a prop of their own component: resolve the chain.
+  for (const edge of [...edges]) {
+    if (edge.kind !== "handles") continue;
+    const event = nodes.get(edge.to);
+    const owner = nodes.get(edge.from);
+    if (event === undefined || event.kind !== "event" || event.handler === null) continue;
+    if (owner === undefined || owner.kind !== "component") continue;
+    const bareName = event.handler.replace(/^(this\.)?props\./, "");
+    if (!owner.props.includes(bareName)) continue;
+
+    const sources = new Set<string>();
+    const grounded = resolveChain(owner.id, bareName, 1, sources);
+    for (const dsId of sources) {
+      addEdge({ from: event.id, to: dsId, kind: "triggers" });
+    }
+    if (!grounded) {
+      event.flags = [...(event.flags ?? []), "unresolved-prop-handler"];
     }
   }
 }
