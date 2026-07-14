@@ -120,6 +120,21 @@ program
       );
       console.log(`  via: ${labels.join(", ")}`);
     }
+    if (lineage.perInstance !== undefined && lineage.perInstance.length > 0) {
+      console.log("  per instance:");
+      for (const inst of lineage.perInstance) {
+        console.log(
+          `    ${inst.instance.name}@${inst.instance.loc.file}:${inst.instance.loc.line}`,
+        );
+        if (inst.dataSources.length === 0) {
+          console.log("      (no distinct data sources)");
+          continue;
+        }
+        for (const ds of inst.dataSources) {
+          console.log(`      → ${ds.method ?? "?"} ${ds.endpoint}  (${ds.loc.file}:${ds.loc.line})`);
+        }
+      }
+    }
     console.log(`  confidence: ${result.candidates[0].confidence.level}`);
   });
 
