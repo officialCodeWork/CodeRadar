@@ -528,7 +528,7 @@ export function traceLineage(graph: LineageGraph, id: string): QueryResult<Linea
   return ok([{ value: lineage, confidence: confidenceFromScore(0.9), evidence }]);
 }
 
-export type JourneyStepKind = "page" | "event" | "navigate" | "fetch" | "state-write";
+export type JourneyStepKind = "page" | "event" | "navigate" | "fetch" | "state-write" | "exit";
 
 /** One node on a user-journey path, with the condition (if any) that gated it. */
 export interface JourneyStep {
@@ -711,14 +711,20 @@ export function journeys(
             ...(stepCondition ? { condition: stepCondition } : {}),
           };
           expand(page.componentId, page.label, [...pagePath, eventStep, navStep], nextVisited);
-        } else if (effect.kind === "triggers" || effect.kind === "writes-state") {
+        } else if (
+          effect.kind === "triggers" ||
+          effect.kind === "writes-state" ||
+          effect.kind === "exits-app"
+        ) {
           const target = byId.get(effect.to);
           if (target === undefined) continue;
           branched = true;
           const leaf: JourneyStep =
             target.kind === "data-source"
               ? { kind: "fetch", nodeId: target.id, label: target.endpoint, loc: target.loc }
-              : { kind: "state-write", nodeId: target.id, label: target.name, loc: target.loc };
+              : target.kind === "external"
+                ? { kind: "exit", nodeId: target.id, label: target.host, loc: target.loc }
+                : { kind: "state-write", nodeId: target.id, label: target.name, loc: target.loc };
           if (paths.length >= maxPaths) {
             truncated = true;
             return;

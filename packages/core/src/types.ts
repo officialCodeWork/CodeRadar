@@ -28,7 +28,8 @@ export type NodeKind =
   | "data-source"
   | "state"
   | "event"
-  | "route";
+  | "route"
+  | "external";
 
 export interface BaseNode {
   /** Stable id, unique within a graph. See nodeId()/instanceId(). */
@@ -251,6 +252,19 @@ export interface RouteNode extends BaseNode {
   guards: string[];
 }
 
+/**
+ * A destination outside this codebase (TRACKER failure mode B9): an OAuth
+ * provider, a payment gateway, a `mailto:`/`tel:` link, or the inbound side of
+ * a deep-link/OAuth-callback route. Journeys that reach one leave the app.
+ */
+export interface ExternalNode extends BaseNode {
+  kind: "external";
+  /** Destination as written — a URL, a `mailto:`/`tel:` scheme, or "inbound". */
+  url: string;
+  /** Host or scheme used to group destinations (accounts.google.com, mailto). */
+  host: string;
+}
+
 export type LineageNode =
   | ComponentNode
   | InstanceNode
@@ -258,7 +272,8 @@ export type LineageNode =
   | DataSourceNode
   | StateNode
   | EventNode
-  | RouteNode;
+  | RouteNode
+  | ExternalNode;
 
 export type EdgeKind =
   | "renders" // component|instance -> instance (definition-level until Phase 2.1)
@@ -271,6 +286,8 @@ export type EdgeKind =
   | "handles" // component -> event
   | "triggers" // event -> data-source (resolved handler body issues a fetch; Phase 3.2)
   | "navigates-to" // event -> route (handler calls navigate/router.push; Phase 3.2, B3)
+  | "exits-app" // event|component -> external (navigate/link to an outside URL; B9)
+  | "enters-at" // external -> route (a deep-link / OAuth-callback entry point; B9)
   | "routes-to"; // route -> page component definition (its instances form the page tree)
 
 /** A statically-detected condition guarding an edge (feature flag, role, branch). */

@@ -116,6 +116,35 @@ describe("form & non-JSX events (TRACKER 3.4, B7/B8)", () => {
   });
 });
 
+describe("cross-app hops (b9 fixture, TRACKER B9)", () => {
+  const b9 = resolveHookEdges(scanReact({ root: path.join(fixtures, "b9-cross-app-hops/app") }));
+  const external = (host: string) =>
+    b9.nodes.find((n) => n.kind === "external" && n.name === host);
+
+  it("a window.open / location.assign to an external URL exits the app", () => {
+    for (const host of ["accounts.google.com", "checkout.stripe.com"]) {
+      const ext = external(host);
+      expect(ext).toBeDefined();
+      expect(b9.edges.some((e) => e.kind === "exits-app" && e.to === ext?.id)).toBe(true);
+    }
+  });
+
+  it("an <a href=\"mailto:…\"> is an exits-app edge from the component", () => {
+    const mailto = external("mailto");
+    const login = b9.nodes.find((n) => n.kind === "component" && n.name === "LoginPage");
+    expect(
+      b9.edges.some((e) => e.kind === "exits-app" && e.from === login?.id && e.to === mailto?.id),
+    ).toBe(true);
+  });
+
+  it("an /auth/callback route is an inbound entry point (enters-at)", () => {
+    const callbackRoute = b9.nodes.find((n) => n.kind === "route" && n.path === "/auth/callback");
+    expect(
+      b9.edges.some((e) => e.kind === "enters-at" && e.to === callbackRoute?.id),
+    ).toBe(true);
+  });
+});
+
 describe("prop-drilled handlers still ground effects (b1 fixture, no regression)", () => {
   const b1 = resolveHookEdges(scanReact({ root: path.join(fixtures, "b1-prop-drilled-handler/app") }));
 

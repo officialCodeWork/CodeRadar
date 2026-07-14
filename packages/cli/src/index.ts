@@ -195,6 +195,7 @@ const STEP_ARROW: Record<string, string> = {
   navigate: "→",
   fetch: "⇢",
   "state-write": "✎",
+  exit: "⏏",
 };
 
 function printJourneyPath(path: JourneyPath): void {

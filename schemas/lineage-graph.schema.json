@@ -90,6 +90,9 @@
         },
         {
           "$ref": "#/definitions/RouteNode"
+        },
+        {
+          "$ref": "#/definitions/ExternalNode"
         }
       ]
     },
@@ -636,6 +639,50 @@
       ],
       "description": "Which routing system declared a route."
     },
+    "ExternalNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "external"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "url": {
+          "type": "string",
+          "description": "Destination as written — a URL, a `mailto:`/`tel:` scheme, or \"inbound\"."
+        },
+        "host": {
+          "type": "string",
+          "description": "Host or scheme used to group destinations (accounts.google.com, mailto)."
+        }
+      },
+      "required": [
+        "host",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A destination outside this codebase (TRACKER failure mode B9): an OAuth provider, a payment gateway, a `mailto:`/`tel:` link, or the inbound side of a deep-link/OAuth-callback route. Journeys that reach one leave the app."
+    },
     "LineageEdge": {
       "type": "object",
       "properties": {
@@ -676,6 +723,8 @@
         "handles",
         "triggers",
         "navigates-to",
+        "exits-app",
+        "enters-at",
         "routes-to"
       ]
     },

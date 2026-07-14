@@ -48,6 +48,9 @@ import {
 /** Auth/role wrapper components recorded as guards rather than layouts. */
 const GUARD_NAME = /^(Require|Protected?|Private)|Guard$/;
 
+/** Route paths that are deep-link / OAuth-callback entry points from outside the app (B9). */
+const EXTERNAL_ENTRY = /callback|oauth|\bsso\b|\/auth\/|\/redirect|\/return\b/i;
+
 const ROUTER_FACTORIES = new Set([
   "createBrowserRouter",
   "createHashRouter",
@@ -140,6 +143,22 @@ class RouteAdapter {
     };
     this.nodes.set(id, route);
     if (page !== null) this.addEdge({ from: id, to: page, kind: "routes-to" });
+
+    // Deep-link / OAuth-callback routes are entry points from outside the app (B9).
+    if (EXTERNAL_ENTRY.test(routePath)) {
+      const inbound = "external:inbound";
+      if (!this.nodes.has(inbound)) {
+        this.nodes.set(inbound, {
+          id: inbound,
+          kind: "external",
+          name: "inbound",
+          loc,
+          url: "inbound",
+          host: "inbound",
+        });
+      }
+      this.addEdge({ from: inbound, to: id, kind: "enters-at" });
+    }
   }
 
   /** "/users" + "settings/:id" → "/users/settings/:id"; absolute children win. */
