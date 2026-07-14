@@ -47,3 +47,35 @@ describe("structural signatures (a1 fixture, TRACKER 4.2)", () => {
     expect(result.candidates[0]?.value.component.name).toBe("LoginForm");
   });
 });
+
+const a6 = resolveHookEdges(
+  scanReact({
+    root: path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../eval/fixtures/a6-composed-page/app",
+    ),
+  }),
+);
+
+describe("most-specific-subtree resolution (a6 fixture, TRACKER 4.3)", () => {
+  it("a full-page term set resolves to the page (smallest subtree covering all)", () => {
+    const result = matchComponents(a6, {
+      terms: ["Analytics Dashboard", "Total revenue", "Workspace settings"],
+    });
+    expect(result.candidates[0]?.value.component.name).toBe("DashboardPage");
+  });
+
+  it("card-specific terms resolve to the deepest node with ancestors as context", () => {
+    const result = matchComponents(a6, { terms: ["Total revenue", "vs last month"] });
+    const top = result.candidates[0]?.value;
+    expect(top?.component.name).toBe("RevenueCard");
+    expect((top?.context ?? []).map((c) => c.name)).toEqual(["RevenueSection", "DashboardPage"]);
+  });
+
+  it("collapses ancestors instead of returning them as competing candidates", () => {
+    const result = matchComponents(a6, { terms: ["Total revenue", "vs last month"] });
+    const names = result.candidates.map((c) => c.value.component.name);
+    expect(names).not.toContain("DashboardPage");
+    expect(names).not.toContain("RevenueSection");
+  });
+});

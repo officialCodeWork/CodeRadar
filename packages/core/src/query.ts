@@ -38,6 +38,13 @@ export interface ComponentMatch {
   /** Call sites of this component, when known. */
   instances: InstanceNode[];
   matchedText: string[];
+  /**
+   * Ancestor components that also cover the matched terms but are less specific
+   * than `component` (TRACKER step 4.3). Present when the match resolved to the
+   * deepest node in a Page > Section > Card nesting — the ancestors are context,
+   * not competing candidates.
+   */
+  context?: ComponentNode[];
 }
 
 /**
@@ -126,36 +133,81 @@ export function matchComponents(
   const termWeight = (term: string): number =>
     tokenize(term).reduce((sum, t) => sum + idf(t), 0);
 
-  const scored: Array<{
+  // Render tree (definition level): A renders B when A has a `renders` edge to
+  // an instance whose `instance-of` points at B. Used to collapse nested
+  // matches to the most specific one (step 4.3).
+  const byId = new Map(components.map((c) => [c.id, c]));
+  const instanceDef = new Map<string, string>();
+  for (const e of graph.edges) if (e.kind === "instance-of") instanceDef.set(e.from, e.to);
+  const childDefs = new Map<string, Set<string>>();
+  for (const e of graph.edges) {
+    if (e.kind !== "renders") continue;
+    const childDef = instanceDef.get(e.to);
+    if (childDef === undefined || !byId.has(e.from) || !byId.has(childDef)) continue;
+    (childDefs.get(e.from) ?? childDefs.set(e.from, new Set()).get(e.from)!).add(childDef);
+  }
+  const descendantsMemo = new Map<string, Set<string>>();
+  const descendants = (id: string): Set<string> => {
+    const cached = descendantsMemo.get(id);
+    if (cached) return cached;
+    const out = new Set<string>();
+    descendantsMemo.set(id, out); // set first to break cycles
+    for (const child of childDefs.get(id) ?? []) {
+      if (out.has(child)) continue;
+      out.add(child);
+      for (const d of descendants(child)) out.add(d);
+    }
+    return out;
+  };
+
+  interface Scored {
     match: ComponentMatch;
     score: number;
     coverage: number;
+    covered: Set<string>;
     evidence: Evidence[];
-  }> = [];
+  }
+  const scored: Scored[] = [];
 
   for (const component of components) {
+    const subtree = [component.id, ...descendants(component.id)];
     const matched: string[] = [];
+    const covered = new Set<string>();
     const evidence: Evidence[] = [];
     let weight = 0;
     for (const term of queryTerms) {
-      const hit = matchingEntry(term, component);
+      let hit: RenderedText | null = null;
+      let where = component;
+      for (const id of subtree) {
+        const node = byId.get(id);
+        if (node === undefined) continue;
+        const found = matchingEntry(term, node);
+        if (found !== null) {
+          hit = found;
+          where = node;
+          break;
+        }
+      }
       if (hit === null) continue;
       const w = termWeight(term);
-      matched.push(term);
+      covered.add(term);
+      if (where.id === component.id) matched.push(term);
       weight += w;
       const provenance =
         hit.source === "i18n"
           ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})`
           : hit.branch !== undefined
             ? ` (renders only when ${hit.branch})`
-            : "";
+            : where.id !== component.id
+              ? ` (in descendant ${where.name})`
+              : "";
       evidence.push({
         kind: "text-match",
         detail: `"${term}" matched rendered text "${hit.text}"${provenance} — rarity weight ${w.toFixed(2)}`,
-        loc: component.loc,
+        loc: where.loc,
       });
     }
-    const textScore = matched.length > 0 ? weight * (1 + 0.5 * (matched.length - 1)) : 0;
+    const textScore = covered.size > 0 ? weight * (1 + 0.5 * (covered.size - 1)) : 0;
 
     const structureFit = descriptor !== undefined ? structureScore(component.structure, descriptor) : 0;
     if (structureFit > 0) {
@@ -166,34 +218,61 @@ export function matchComponents(
       });
     }
 
-    if (matched.length === 0 && structureFit === 0) continue;
-    const coverage = queryTerms.length > 0 ? matched.length / queryTerms.length : structureFit;
+    if (covered.size === 0 && structureFit === 0) continue;
+    const coverage = queryTerms.length > 0 ? covered.size / queryTerms.length : structureFit;
     scored.push({
       match: {
         component,
         instances: instancesByDefinition.get(component.id) ?? [],
-        matchedText: matched,
+        matchedText: matched.length > 0 ? matched : [...covered],
       },
       score: textScore + structureFit * STRUCTURE_WEIGHT,
       coverage: Math.max(coverage, structureFit),
+      covered,
       evidence,
     });
   }
 
   if (scored.length === 0) return declined("no-signal");
 
+  const sameCovered = (a: Set<string>, b: Set<string>): boolean =>
+    a.size === b.size && [...a].every((t) => b.has(t));
+
+  // Most-specific-subtree collapse: when an ancestor and a descendant cover the
+  // same term set (equal score), keep the deepest and fold ancestors into its
+  // `context`, so a Card that a Page renders wins with the Page as context.
+  const subtreeSize = (s: Scored): number => descendants(s.match.component.id).size;
   scored.sort(
-    (a, b) => b.score - a.score || a.match.component.name.localeCompare(b.match.component.name),
+    (a, b) =>
+      b.score - a.score ||
+      subtreeSize(a) - subtreeSize(b) ||
+      a.match.component.name.localeCompare(b.match.component.name),
   );
-  const candidates: Candidate<ComponentMatch>[] = scored.map((s) => ({
+  const collapsed = new Set<string>();
+  for (const s of scored) {
+    if (collapsed.has(s.match.component.id)) continue;
+    const context: ComponentNode[] = [];
+    for (const other of scored) {
+      if (other === s || collapsed.has(other.match.component.id)) continue;
+      const otherOwnsS = descendants(other.match.component.id).has(s.match.component.id);
+      if (otherOwnsS && sameCovered(other.covered, s.covered)) {
+        context.push(other.match.component);
+        collapsed.add(other.match.component.id);
+      }
+    }
+    if (context.length > 0) s.match.context = context;
+  }
+  const winners = scored.filter((s) => !collapsed.has(s.match.component.id));
+
+  const candidates: Candidate<ComponentMatch>[] = winners.map((s) => ({
     value: s.match,
     confidence: confidenceFromScore(s.coverage),
     evidence: s.evidence,
   }));
 
-  const top = scored[0];
+  const top = winners[0];
   const tied =
-    top === undefined ? [] : scored.filter((s) => Math.abs(s.score - top.score) < 1e-9);
+    top === undefined ? [] : winners.filter((s) => Math.abs(s.score - top.score) < 1e-9);
   if (tied.length > 1) {
     const names = tied.map((s) => s.match.component.name).join(", ");
     return ambiguous(
