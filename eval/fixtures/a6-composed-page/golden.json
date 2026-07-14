@@ -1,0 +1,25 @@
+{
+  "failureMode": "A6",
+  "note": "Composed page: DashboardPage renders RevenueSection (→ RevenueCard) and SettingsSection, so several nested components 'cover' a query via their subtree. A full-page term set resolves to the page (smallest subtree covering all terms); a card-specific term set resolves to the deepest node (RevenueCard) with its ancestors listed as context, not competing candidates.",
+  "expect": {
+    "components": [
+      { "name": "DashboardPage", "instances": 0 },
+      { "name": "RevenueSection", "instances": 1 },
+      { "name": "RevenueCard", "instances": 1 },
+      { "name": "SettingsSection", "instances": 1 }
+    ],
+    "queries": [
+      {
+        "terms": ["Analytics Dashboard", "Total revenue", "Workspace settings"],
+        "status": "ok",
+        "top": "DashboardPage"
+      },
+      {
+        "terms": ["Total revenue", "vs last month"],
+        "status": "ok",
+        "top": "RevenueCard",
+        "context": ["RevenueSection", "DashboardPage"]
+      }
+    ]
+  }
+}

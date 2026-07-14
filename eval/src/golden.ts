@@ -40,6 +40,8 @@ export interface GoldenQuery {
   status: "ok" | "ambiguous" | "declined";
   /** Required top-1 component name when status is "ok". */
   top?: string;
+  /** Ancestor names the top match must list as `context` (step 4.3). */
+  context?: string[];
   /**
    * When set, `top` need only appear within the first `topK` candidates rather
    * than at rank 1 — the honest bar for OCR-noisy input (failure mode A10).

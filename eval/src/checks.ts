@@ -232,6 +232,11 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
           k > 1
             ? `expected ${query.top} in top ${k}, got [${topNames.join(", ")}]`
             : `expected top ${query.top}, got ${topNames[0] ?? "none"}`;
+      } else if (query.context !== undefined) {
+        const ctx = (result.candidates[0]?.value.context ?? []).map((c) => c.name);
+        const missing = query.context.filter((c) => !ctx.includes(c));
+        passed = missing.length === 0;
+        if (!passed) detail = `expected context [${query.context.join(", ")}], got [${ctx.join(", ")}]`;
       }
     }
     finalize("queries", id, passed, query.expectedFail, detail);
