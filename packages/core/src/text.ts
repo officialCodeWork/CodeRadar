@@ -42,3 +42,49 @@ function foldPlural(token: string): string {
   if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) return token.slice(0, -1);
   return token;
 }
+
+/** Normalized significant tokens of a string (drops empties). */
+export function tokenize(input: string): string[] {
+  return normalizeText(input)
+    .split(" ")
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Levenshtein distance between `a` and `b`, abandoned once it exceeds `max`
+ * (returns `max + 1`). Bounding keeps the matcher's fuzzy comparisons cheap.
+ */
+export function editDistance(a: string, b: string, max: number): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const prev = new Array<number>(b.length + 1);
+  const curr = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j += 1) prev[j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min((prev[j] ?? 0) + 1, (curr[j - 1] ?? 0) + 1, (prev[j - 1] ?? 0) + cost);
+      curr[j] = value;
+      if (value < rowMin) rowMin = value;
+    }
+    if (rowMin > max) return max + 1;
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j] ?? 0;
+  }
+  return prev[b.length] ?? max + 1;
+}
+
+/**
+ * OCR-tolerant token equality: exact after normalization, or within a small
+ * edit distance that scales with length — short tokens ("save") must match
+ * exactly so they don't collide ("safe"), longer distinctive words tolerate the
+ * 1–2 character slips OCR introduces ("reconcilliation" ≈ "reconciliation").
+ */
+export function fuzzyTokenMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const len = Math.max(a.length, b.length);
+  if (len < 5) return false;
+  const budget = len <= 7 ? 1 : 2;
+  return editDistance(a, b, budget) <= budget;
+}

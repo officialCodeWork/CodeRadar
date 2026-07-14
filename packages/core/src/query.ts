@@ -14,7 +14,7 @@ import {
   ok,
   type QueryResult,
 } from "./result.js";
-import { normalizeText, textMatches } from "./text.js";
+import { fuzzyTokenMatch, normalizeText, textMatches, tokenize } from "./text.js";
 import type {
   ComponentNode,
   DataSourceNode,
@@ -25,6 +25,7 @@ import type {
   LineageEdge,
   LineageGraph,
   LineageNode,
+  RenderedText,
   RouteNode,
   SourceLocation,
   StateNode,
@@ -38,56 +39,108 @@ export interface ComponentMatch {
 }
 
 /**
- * Rank components by overlap between `terms` (words/phrases read off a
- * screenshot or ticket) and each component's statically rendered text.
+ * Rank components by how well `terms` (words/phrases read off a screenshot or
+ * ticket) match each component's statically rendered text (TRACKER step 4.1).
  *
- * Returns `ambiguous` when several components tie at the top score,
- * `declined("no-signal")` when nothing matches at all.
+ * Three ideas beyond raw overlap:
+ * - **Rarity weighting** — a term's weight is its inverse document frequency
+ *   across the graph, so "Save" (everywhere) counts for almost nothing while
+ *   "Reconciliation" (one component) dominates.
+ * - **Fuzzy tokens** — long tokens match within a small edit distance, so OCR
+ *   slips ("Reconcilliation") still land (failure mode A10).
+ * - **Combination bonus** — several distinct terms co-occurring in one
+ *   component outrank the same terms scattered across many.
+ *
+ * Returns `ambiguous` when the leaders tie on rarity-weighted score (a lone
+ * generic term is honestly ambiguous), `declined("no-signal")` on no match.
  */
 export function matchComponentsByText(
   graph: LineageGraph,
   terms: string[],
 ): QueryResult<ComponentMatch> {
-  const needles = terms.map((t) => normalizeText(t)).filter((t) => t.length > 1);
-  if (needles.length === 0) return declined("no-signal");
+  const queryTerms = terms.map((t) => normalizeText(t)).filter((t) => t.length > 1);
+  if (queryTerms.length === 0) return declined("no-signal");
 
   const instancesByDefinition = groupInstances(graph);
-  const scored: Array<{ match: ComponentMatch; score: number; evidence: Evidence[] }> = [];
+  const components = graph.nodes.filter((n): n is ComponentNode => n.kind === "component");
 
-  for (const node of graph.nodes) {
-    if (node.kind !== "component") continue;
-    const matchedText: string[] = [];
-    const evidence: Evidence[] = [];
-    for (const needle of needles) {
-      const hit = node.renderedText.find((entry) =>
-        textMatches(normalizeText(entry.text), needle),
-      );
-      if (hit !== undefined) {
-        matchedText.push(hit.text.toLowerCase());
-        const provenance =
-          hit.source === "i18n"
-            ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})`
-            : hit.branch !== undefined
-              ? ` (renders only when ${hit.branch})`
-              : "";
-        evidence.push({
-          kind: "text-match",
-          detail: `"${needle}" matched rendered text "${hit.text}"${provenance}`,
-          loc: node.loc,
-        });
+  // Document frequency per token, for rarity (IDF) weighting.
+  const documentFrequency = new Map<string, number>();
+  for (const component of components) {
+    const tokens = new Set<string>();
+    for (const entry of component.renderedText) for (const t of tokenize(entry.text)) tokens.add(t);
+    for (const t of tokens) documentFrequency.set(t, (documentFrequency.get(t) ?? 0) + 1);
+  }
+  const total = components.length || 1;
+  const idf = (token: string): number => {
+    let df = documentFrequency.get(token);
+    if (df === undefined) {
+      // Not an exact token — charge the rarity of the closest fuzzy match.
+      for (const [candidate, count] of documentFrequency) {
+        if (fuzzyTokenMatch(candidate, token)) df = Math.max(df ?? 0, count);
       }
     }
-    if (matchedText.length > 0) {
-      scored.push({
-        match: {
-          component: node,
-          instances: instancesByDefinition.get(node.id) ?? [],
-          matchedText,
-        },
-        score: matchedText.length / needles.length,
-        evidence,
+    return Math.log((total + 1) / ((df ?? 0.5) + 0.5));
+  };
+
+  // The rendered-text entry a phrase term matches: directly (exact/substring/
+  // wildcard) or as an ordered, fuzzy, contiguous run of its tokens — order
+  // matters, so "Order deleted" does not match "Delete order", but OCR slips
+  // in any single token still land. Returns the entry (for provenance) or null.
+  const matchingEntry = (term: string, component: ComponentNode): RenderedText | null => {
+    const termTokens = tokenize(term);
+    if (termTokens.length === 0) return null;
+    for (const entry of component.renderedText) {
+      if (textMatches(normalizeText(entry.text), term)) return entry;
+      if (containsPhrase(tokenize(entry.text), termTokens)) return entry;
+    }
+    return null;
+  };
+
+  const termWeight = (term: string): number =>
+    tokenize(term).reduce((sum, t) => sum + idf(t), 0);
+
+  const scored: Array<{
+    match: ComponentMatch;
+    score: number;
+    coverage: number;
+    evidence: Evidence[];
+  }> = [];
+
+  for (const component of components) {
+    const matched: string[] = [];
+    const evidence: Evidence[] = [];
+    let weight = 0;
+    for (const term of queryTerms) {
+      const hit = matchingEntry(term, component);
+      if (hit === null) continue;
+      const w = termWeight(term);
+      matched.push(term);
+      weight += w;
+      const provenance =
+        hit.source === "i18n"
+          ? ` (i18n key ${hit.key ?? "?"}, locale ${hit.locale ?? "?"})`
+          : hit.branch !== undefined
+            ? ` (renders only when ${hit.branch})`
+            : "";
+      evidence.push({
+        kind: "text-match",
+        detail: `"${term}" matched rendered text "${hit.text}"${provenance} — rarity weight ${w.toFixed(2)}`,
+        loc: component.loc,
       });
     }
+    if (matched.length === 0) continue;
+    const combination = 1 + 0.5 * (matched.length - 1);
+    scored.push({
+      match: {
+        component,
+        instances: instancesByDefinition.get(component.id) ?? [],
+        matchedText: matched,
+      },
+      score: weight * combination,
+      coverage: matched.length / queryTerms.length,
+      evidence,
+    });
   }
 
   if (scored.length === 0) return declined("no-signal");
@@ -97,18 +150,19 @@ export function matchComponentsByText(
   );
   const candidates: Candidate<ComponentMatch>[] = scored.map((s) => ({
     value: s.match,
-    confidence: confidenceFromScore(s.score),
+    confidence: confidenceFromScore(s.coverage),
     evidence: s.evidence,
   }));
 
   const top = scored[0];
-  const tied = top === undefined ? [] : scored.filter((s) => s.score === top.score);
+  const tied =
+    top === undefined ? [] : scored.filter((s) => Math.abs(s.score - top.score) < 1e-9);
   if (tied.length > 1) {
     const names = tied.map((s) => s.match.component.name).join(", ");
     return ambiguous(
       candidates,
-      `Multiple components match equally well (${names}). ` +
-        `Which file or page is the screenshot from, or what other text is visible?`,
+      `Several components match equally well (${names}). ` +
+        `Which page is the screenshot from, or what other distinctive text is visible?`,
     );
   }
   return ok(candidates);
@@ -480,6 +534,24 @@ export function journeys(
     },
   ];
   return ok([{ value: paths, confidence: confidenceFromScore(0.9), evidence }]);
+}
+
+/** True when `phrase` tokens appear as a contiguous, in-order, fuzzy run in `haystack`. */
+function containsPhrase(haystack: string[], phrase: string[]): boolean {
+  if (phrase.length === 0 || phrase.length > haystack.length) return false;
+  for (let start = 0; start + phrase.length <= haystack.length; start += 1) {
+    let ok = true;
+    for (let k = 0; k < phrase.length; k += 1) {
+      const h = haystack[start + k];
+      const p = phrase[k];
+      if (h === undefined || p === undefined || !fuzzyTokenMatch(h, p)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
 }
 
 function groupInstances(graph: LineageGraph): Map<string, InstanceNode[]> {
