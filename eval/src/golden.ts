@@ -104,6 +104,18 @@ export interface GoldenCondition {
   expectedFail?: string;
 }
 
+/** A cross-app hop (step B9): an exits-app or enters-at edge. */
+export interface GoldenExternal {
+  kind: "exits" | "enters";
+  /** exits: the component whose link/handler leaves the app. */
+  component?: string;
+  /** enters: the inbound entry route path. */
+  route?: string;
+  /** External host/scheme the edge connects to (accounts.google.com, mailto, inbound). */
+  host: string;
+  expectedFail?: string;
+}
+
 export interface Golden {
   failureMode: string;
   note?: string;
@@ -129,6 +141,8 @@ export interface Golden {
     journeys?: GoldenJourney[];
     /** Flag/role conditions on renders/handles edges (step 3.5). */
     conditions?: GoldenCondition[];
+    /** Cross-app hops (B9): exits-app / enters-at edges. */
+    externals?: GoldenExternal[];
   };
 }
 
@@ -145,7 +159,8 @@ export interface CheckResult {
     | "routes"
     | "effects"
     | "journeys"
-    | "conditions";
+    | "conditions"
+    | "externals";
   status: CheckStatus;
   detail?: string;
 }

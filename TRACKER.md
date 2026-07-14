@@ -214,6 +214,11 @@ The heart of the project. C1 and B1 live here.
 **Build:** feature-flag detection (configurable call names: `useFlag`, `useFeature`, `isEnabled`) and role checks in render branches → `EdgeCondition{kind:"flag"|"role"}` on the enclosed `renders`/`handles` edges.
 **Accept:** fixture `g5-feature-flag` green: flag-gated UI's journey step carries the flag name. **Gate 3 passes.**
 
+### [x] 3.6 Cross-app hops (added — was a catalog gap)
+**Failure modes:** B9
+**Build:** `ExternalNode` + `exits-app` / `enters-at` edges. Navigate/`window.open`/`window.location.assign`/`<a href>`/`<Link to>` to an absolute URL or `mailto:`/`tel:` scheme → `exits-app` (event or component → external, deduped by host). Deep-link/OAuth-callback route paths → `enters-at` from an inbound external node. Journeys reaching an external end with an `exit` step.
+**Accept:** fixture `b9-cross-app-hops` green (OAuth redirect, Stripe `window.open`, mailto link, `/auth/callback` entry).
+
 ---
 
 ## Phase 4 — Matching engine

@@ -723,6 +723,15 @@ function extractBodyFacts(
 
   for (const attr of body.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
     const attrName = attr.getNameNode().getText();
+    // <a href="https://…"> / <Link to="mailto:…"> — a link that leaves the app (B9).
+    if (attrName === "href" || attrName === "to") {
+      const url = jsxAttrString(attr);
+      if (url !== null && isExternalUrl(url)) {
+        const ext = ensureExternalNode(nodes, url, locOf(attr, file));
+        addEdge({ from: ownerId, to: ext, kind: "exits-app", via: url });
+      }
+      continue;
+    }
     if (!/^on[A-Z]/.test(attrName)) continue;
     const init = attr.getInitializer();
     if (init === undefined || !Node.isJsxExpression(init)) {
@@ -758,6 +767,19 @@ function jsxTagName(attr: Node): string {
     return element.getTagNameNode().getText();
   }
   return "";
+}
+
+/** A JSX attribute's statically-known string value (href="…" / to={CONST}), or null. */
+function jsxAttrString(attr: Node): string | null {
+  if (!Node.isJsxAttribute(attr)) return null;
+  const init = attr.getInitializer();
+  if (init === undefined) return null;
+  if (Node.isStringLiteral(init)) return init.getLiteralValue();
+  if (Node.isJsxExpression(init)) {
+    const expr = init.getExpression();
+    if (expr !== undefined) return resolveStringValue(expr, 0);
+  }
+  return null;
 }
 
 /** `useSelector((s) => s.users.list)` → the "users" slice's StateNode id. */
@@ -1620,8 +1642,34 @@ type Effect =
   | { kind: "triggers"; to: string }
   | { kind: "writes-state"; to: string }
   | { kind: "navigates-to"; to: string; via: string }
+  | { kind: "exits-app"; to: string; via: string }
   /** Internal: navigation to a resolved path with no matching route → flag only. */
   | { kind: "nav-unresolved"; to: string };
+
+/** A URL that leaves this app: absolute/protocol-relative, or a mailto/tel/sms scheme. */
+function isExternalUrl(value: string): boolean {
+  return /^(?:https?:)?\/\//.test(value) || /^(mailto|tel|sms):/i.test(value);
+}
+
+/** Host (accounts.google.com) or scheme (mailto) used to group external destinations. */
+function externalHost(url: string): string {
+  const scheme = /^(mailto|tel|sms):/i.exec(url);
+  if (scheme?.[1] !== undefined) return scheme[1].toLowerCase();
+  const host = /^(?:https?:)?\/\/([^/?#]+)/.exec(url);
+  return host?.[1] ?? url;
+}
+
+/** Reuse or create the ExternalNode for a destination (deduped by host). */
+function ensureExternalNode(
+  nodes: Map<string, LineageNode>,
+  url: string,
+  loc: SourceLocation,
+): string {
+  const host = externalHost(url);
+  const id = `external:${host}`;
+  if (!nodes.has(id)) nodes.set(id, { id, kind: "external", name: host, loc, url, host });
+  return id;
+}
 
 function resolveHandlerChains(
   pendingInstances: PendingInstance[],
@@ -1703,6 +1751,18 @@ function resolveHandlerChains(
     return resolved.resolved === "none" ? null : resolved;
   };
 
+  /** window.open(url) / location.assign(url) / location.replace(url) → external URL, or null. */
+  const externalNavTarget = (call: CallExpression, calleeExpr: Node): ResolvedEndpoint | null => {
+    if (!Node.isPropertyAccessExpression(calleeExpr)) return null;
+    const method = calleeExpr.getName();
+    const receiver = calleeExpr.getExpression().getText();
+    const isOpen = method === "open" && /(^|\.)(window|globalThis)$/.test(receiver);
+    const isLocation = (method === "assign" || method === "replace") && /(^|\.)location$/.test(receiver);
+    if (!isOpen && !isLocation) return null;
+    const resolved = resolveEndpoint(call.getArguments()[0], []);
+    return resolved.resolved !== "none" && isExternalUrl(resolved.endpoint) ? resolved : null;
+  };
+
   /** dispatch(thunk()) / dispatch(action()) → the slice StateNode ids it writes. */
   const dispatchTargets = (call: CallExpression, calleeExpr: Node): string[] => {
     const callee = calleeExpr.getText();
@@ -1759,8 +1819,14 @@ function resolveHandlerChains(
       if (!Node.isCallExpression(call)) continue;
       const calleeExpr = call.getExpression();
 
-      const navTarget = navigationTarget(call, calleeExpr);
+      const navTarget = navigationTarget(call, calleeExpr) ?? externalNavTarget(call, calleeExpr);
       if (navTarget !== null) {
+        if (isExternalUrl(navTarget.endpoint)) {
+          // OAuth redirect, payment gateway, mailto: — the journey leaves the app (B9).
+          const ext = ensureExternalNode(nodes, navTarget.endpoint, locOf(call, fileOf(call)));
+          pushEffect(effects, { kind: "exits-app", to: ext, via: navTarget.endpoint });
+          continue;
+        }
         const routeId = matchRoute(navTarget.endpoint);
         pushEffect(
           effects,
@@ -1961,7 +2027,9 @@ function resolveHandlerChains(
         from: eventId,
         to: effect.to,
         kind: effect.kind,
-        ...(effect.kind === "navigates-to" ? { via: effect.via } : {}),
+        ...(effect.kind === "navigates-to" || effect.kind === "exits-app"
+          ? { via: effect.via }
+          : {}),
       });
     }
     const flags: string[] = [];

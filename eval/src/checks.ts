@@ -222,6 +222,47 @@ export function runChecks(
     );
   }
 
+  for (const expected of golden.expect.externals ?? []) {
+    const id = `external:${expected.kind}:${expected.component ?? expected.route}~${expected.host}`;
+    const node = (nid: string) => graph.nodes.find((n) => n.id === nid);
+    let matched = false;
+    if (expected.kind === "exits") {
+      const owner = graph.nodes.find((n) => n.kind === "component" && n.name === expected.component);
+      matched = graph.edges.some((e) => {
+        if (e.kind !== "exits-app") return false;
+        const target = node(e.to);
+        if (target?.kind !== "external" || target.host !== expected.host || owner === undefined) {
+          return false;
+        }
+        if (e.from === owner.id) return true; // direct <a href>
+        // otherwise an event handled by the owner component
+        return (
+          node(e.from)?.kind === "event" &&
+          graph.edges.some((h) => h.kind === "handles" && h.from === owner.id && h.to === e.from)
+        );
+      });
+    } else {
+      matched = graph.edges.some((e) => {
+        if (e.kind !== "enters-at") return false;
+        const route = node(e.to);
+        const from = node(e.from);
+        return (
+          route?.kind === "route" &&
+          route.path === expected.route &&
+          from?.kind === "external" &&
+          from.host === expected.host
+        );
+      });
+    }
+    finalize(
+      "externals",
+      id,
+      matched,
+      expected.expectedFail,
+      matched ? undefined : `no ${expected.kind}-app edge for ${expected.host}`,
+    );
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+") || JSON.stringify(query.structure)}`;
     const result = matchComponents(graph, {
