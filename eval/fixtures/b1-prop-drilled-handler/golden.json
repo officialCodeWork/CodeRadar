@@ -1,0 +1,29 @@
+{
+  "failureMode": "B1",
+  "note": "Callback prop-drilling, 4 levels: SaveButton.onClick={onSave} <- Toolbar (renamed prop) <- EditorPanel (inline arrow wrap) <- DraftEditor (real handler: fetch POST /api/drafts). Per-file analysis stops at the prop boundary; chain resolution must ground the event in the fetch. OrphanButton's never-passed handler must flag unresolved, not guess.",
+  "expect": {
+    "components": [
+      { "name": "SaveButton", "instances": 1 },
+      { "name": "Toolbar", "instances": 1 },
+      { "name": "EditorPanel", "instances": 1 },
+      { "name": "DraftEditor", "instances": 0 },
+      { "name": "OrphanButton", "instances": 1 }
+    ],
+    "attributions": [
+      { "component": "SaveButton", "endpoints": ["/api/drafts"] },
+      { "component": "OrphanButton", "endpoints": [] }
+    ],
+    "forbidden": [
+      {
+        "component": "OrphanButton",
+        "endpoint": "/api/drafts",
+        "note": "poison: an unrelated chain's endpoint attributed to the orphan"
+      }
+    ],
+    "queries": [
+      { "terms": ["Save draft"], "status": "ok", "top": "SaveButton" },
+      { "terms": ["Draft editor"], "status": "ok", "top": "DraftEditor" },
+      { "terms": ["Mystery action"], "status": "ok", "top": "OrphanButton" }
+    ]
+  }
+}

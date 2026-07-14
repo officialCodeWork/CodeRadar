@@ -4,9 +4,10 @@
 
 ## Status
 
-- **Current phase:** 0 — Foundations
-- **Next step:** 0.1 — Schema v2 (instance nodes, evidence, confidence)
-- **Gates passed:** none yet (Gate 0 is the first)
+- **Current phase:** 3 — Journey graph
+- **Next step:** 3.4 — Form libraries & non-JSX events
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.3
+- **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000)
 
 ## What CodeRadar is
 
@@ -42,7 +43,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 Everything else depends on getting the schema and the measurement loop right first.
 The v0.1 schema is definition-only, which is *wrong* for C1 — fix before building on it.
 
-### [ ] 0.1 Schema v2 — instances, evidence, confidence
+### [x] 0.1 Schema v2 — instances, evidence, confidence
 **Failure modes:** C1 (schema half), D2 (schema half), A5, B5 (edge conditions)
 **Build:** rework `packages/core/src/types.ts`:
 - `InstanceNode` — `{ id, kind: "instance", definitionId, parentInstanceId | null, loc, staticProps: Record<string, string> }`. One per JSX call site of a project component. Id: `instance:<file>:<line>#<DefName>`.
@@ -57,7 +58,7 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 - Demo-app scan shows `UserCard` with 1 definition + 1 instance (parent `UserList`).
 - `matchComponentsByText` / `traceLineage` return `QueryResult` envelopes.
 
-### [ ] 0.2 Eval harness + first fixtures
+### [x] 0.2 Eval harness + first fixtures
 **Failure modes:** infrastructure for all; first fixtures C1, A4
 **Build:** `eval/run.ts` (a workspace package `@coderadar/eval`):
 - Discovers `eval/fixtures/*/`, scans each `app/` dir, diffs the graph + query results against `golden.json` (format in testing-strategy.md, including `forbidden` entries).
@@ -66,16 +67,16 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 - Fixtures: `c1-shared-datatable` (DataTable rendered by Users + Invoices pages, different APIs — must attribute per instance, `forbidden` catches definition-level attribution), `a4-generic-text` (three components sharing "Save"), plus `demo-app` moved under fixtures.
 **Accept:** `pnpm eval` runs green locally on the non-C1 assertions; C1 attribution assertions may be *red* (prop-flow lands in 2.2) but the fixture and its golden file exist and the runner reports them as `expected-fail: phase-2`. Expected-fail support is part of the runner.
 
-### [ ] 0.3 Graph storage & versioning
+### [x] 0.3 Graph storage & versioning
 **Failure modes:** G2, G3 (foundation), D1 (foundation)
 **Build:**
 - `GraphMeta` — `{ commitSha, dirty: boolean, generatedAt, generator, scanRoot }` embedded in `LineageGraph`.
 - `saveGraph(graph, path)` / `loadGraph(path)` in core with schema-version check (refuse to load a newer major version).
-- JSON Schema for the whole graph exported to `dist/schemas/lineage-graph.schema.json` (generated from the TS types; committed; drift-gated by a test that regenerates and diffs).
+- JSON Schema for the whole graph exported to `schemas/lineage-graph.schema.json` (repo root — `dist/` is gitignored; generated from the TS types; committed; drift-gated by a test that regenerates and diffs).
 - CLI: `scan` records commit SHA (via `git rev-parse`, `dirty` from `git status`).
 **Accept:** round-trip test (scan → save → load → deep-equal); schema drift test; `coderadar scan` output includes SHA.
 
-### [ ] 0.4 CI pipeline
+### [x] 0.4 CI pipeline
 **Failure modes:** D1, process
 **Build:** GitHub Actions workflow: install (pnpm cache) → build → typecheck → vitest unit tests → `pnpm eval` → upload scorecard as artifact. Threshold ratchet rule documented in the workflow file header (raising OK; lowering needs PR-body justification).
 **Accept:** CI green on a PR; a deliberately broken fixture in a test branch turns it red. **Gate 0 passes.**
@@ -87,7 +88,7 @@ The v0.1 schema is definition-only, which is *wrong* for C1 — fix before build
 Make the parser survive real code instead of demo code. All work is within-file or
 follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 
-### [ ] 1.1 Endpoint resolution — constants, templates, patterns
+### [x] 1.1 Endpoint resolution — constants, templates, patterns
 **Failure modes:** C2 (constants half), C3
 **Build:** in `parser-react`:
 - Resolve identifier arguments to fetch/axios through imports to their declarations (constant folding: string literals, `const` object members like `ENDPOINTS.USERS`, simple concatenation).
@@ -96,7 +97,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - `DataSourceNode` gains `{ pattern: string, resolved: "full" | "partial" | "none", raw: string }`.
 **Accept:** fixtures `c2-endpoint-constants`, `c3-dynamic-endpoints` green; lineage precision holds ≥ 0.90 on all existing fixtures.
 
-### [ ] 1.2 API-client wrapper adapter
+### [x] 1.2 API-client wrapper adapter
 **Failure modes:** C2 (wrapper half)
 **Build:**
 - Detection heuristic: a function/method whose body reaches `fetch`/`axios` and takes a path-like parameter → classified as an API wrapper; its call sites become data sources with the path argument resolved per 1.1.
@@ -104,12 +105,12 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - Wrapper chains up to depth 3 (`useApi → apiClient.get → fetch`).
 **Accept:** fixture `c2-api-wrapper` (three-layer wrapper) green; wrapper detection has unit tests for both heuristic and config paths.
 
-### [ ] 1.3 react-query / SWR queryFn following
+### [x] 1.3 react-query / SWR queryFn following
 **Failure modes:** C5
 **Build:** when `useQuery`/`useMutation`/`useSWR`'s fn argument is a reference, resolve to its declaration (same file or import) and extract the endpoint from its body via 1.1/1.2. Data source records both the query key and the resolved endpoint; mutations get `method` from the inner call.
 **Accept:** fixture `c5-queryfn-indirection` green (queryFn in a separate `api/users.ts`).
 
-### [ ] 1.4 i18n adapter
+### [x] 1.4 i18n adapter
 **Failure modes:** A2
 **Build:**
 - Scan option `i18n: { localeGlobs: string[], defaultLocale: string }`; parse JSON/YAML locale files into a key → string-per-locale table (nested keys flattened, `{{var}}` placeholders preserved).
@@ -117,7 +118,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - `renderedText` becomes structured: `{ text: string, source: "jsx" | "attribute" | "i18n", branch?: string, locale?: string }[]` (schema addition — update JSON Schema + goldens).
 **Accept:** fixture `a2-i18n-keys` green: searching "Team Members" *and* "Équipe" both find the component.
 
-### [ ] 1.5 Rendered-text hardening
+### [x] 1.5 Rendered-text hardening
 **Failure modes:** A7 (extraction half), A8
 **Build:**
 - Template text: `` `${count} items` `` → `"* items"` with a `template: true` flag.
@@ -125,7 +126,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 - Normalization utility in core (shared with the Phase 4 matcher): lowercase, collapse whitespace, strip punctuation, naive singular/plural folding.
 **Accept:** fixtures `a7-transformed-text`, `a8-conditional-text` green (error-state text findable and tagged with its branch).
 
-### [ ] 1.6 Legacy patterns & graceful degradation
+### [x] 1.6 Legacy patterns & graceful degradation
 **Failure modes:** D4
 **Build:**
 - Class components: `render()` treated as the body; `this.state`/`setState` → state nodes; lifecycle fetches detected.
@@ -139,7 +140,7 @@ follow-one-reference; the cross-file instance/prop-flow machinery is Phase 2.
 
 The heart of the project. C1 and B1 live here.
 
-### [ ] 2.1 Instance tree construction
+### [x] 2.1 Instance tree construction
 **Failure modes:** C1 (graph half), A5
 **Build:** cross-file pass in `parser-react`:
 - Resolve every JSX tag to its component definition through imports (including `export { X as Y }`, barrel files, default exports).
@@ -147,7 +148,7 @@ The heart of the project. C1 and B1 live here.
 - Design-system components (imported from `node_modules` or a configured `designSystemPackages` list): instances are still created, flagged `external-definition` — the instance is ours even when the definition isn't.
 **Accept:** fixture `a5-design-system` green (match resolves to the usage site); instance counts asserted in c1 golden; barrel-file resolution unit-tested.
 
-### [ ] 2.2 Prop-flow: data attribution per instance
+### [x] 2.2 Prop-flow: data attribution per instance
 **Failure modes:** C1 (the headline)
 **Build:**
 - For each instance, connect prop values to their origins in the parent scope: identifier props trace back through variable declarations to hook results / fetch results / store reads within the parent.
@@ -156,7 +157,7 @@ The heart of the project. C1 and B1 live here.
 - Depth limit (default 5 hops) with `flags: ["depth-limited"]` when hit.
 **Accept:** **c1-shared-datatable attribution assertions flip from expected-fail to green** — DataTable@Users → `/api/users`, DataTable@Invoices → `/api/invoices`, zero `forbidden` hits. Instance attribution accuracy = 1.0 on C1 fixtures.
 
-### [ ] 2.3 Handler resolution through props
+### [x] 2.3 Handler resolution through props
 **Failure modes:** B1
 **Build:** same machinery, callback direction:
 - `onClick={props.onSave}` → resolve `onSave` at each parent instance → the passed function → its body (which Phase 3 mines for effects). Chain recorded as evidence (`edge-chain`).
@@ -164,7 +165,7 @@ The heart of the project. C1 and B1 live here.
 - Unresolvable after 4 levels → `handler: null, flags: ["unresolved-prop-handler"]` — visible, not silent.
 **Accept:** fixture `b1-prop-drilled-handler` (4 levels) ≥ 0.85 resolution; unresolved cases flagged in graph.
 
-### [ ] 2.4 Store adapter — writers ↔ readers
+### [x] 2.4 Store adapter — writers ↔ readers
 **Failure modes:** C6, B2 (redux/zustand half)
 **Build:**
 - Redux/RTK: slice detection (`createSlice`), `useSelector(s => s.users)` → StateNode per slice path; dispatch sites of thunks/actions that carry API results → `writes-state` edges from the data source to the slice.
@@ -172,7 +173,7 @@ The heart of the project. C1 and B1 live here.
 - `traceLineage` through a StateNode now continues to its writers: reader component → slice → populating API.
 **Accept:** fixture `c6-store-decoupled` green — component with **no fetch of its own** correctly attributed to the API called on a different page at login.
 
-### [ ] 2.5 Portals, modals, toasts
+### [x] 2.5 Portals, modals, toasts
 **Failure modes:** A9
 **Build:** `createPortal` detection + adapter list for common modal/toast libs (`react-modal`, radix `Dialog`, `react-hot-toast`): the triggering instance gets a `triggers-render` edge to the portal-content instance.
 **Accept:** fixture `a9-modal-portal` green: matching the modal's text surfaces both the modal component and its trigger site. **Gate 2 passes.**
@@ -181,12 +182,12 @@ The heart of the project. C1 and B1 live here.
 
 ## Phase 3 — Journey graph
 
-### [ ] 3.1 Router adapters
+### [x] 3.1 Router adapters
 **Failure modes:** B4
 **Build:** `RouteNode` (`path`, `layout`, `guards`) in core. Adapters: React Router (`createBrowserRouter` / `<Route>` trees, nested + lazy) and Next.js file-based (app + pages router). `routes-to` edges route → page-component instance tree.
 **Accept:** fixtures `b4-react-router`, `b4-nextjs-approuter` green: every golden route maps to its page component.
 
-### [ ] 3.2 Action effects
+### [x] 3.2 Action effects
 **Failure modes:** B3, B2 (dispatch half)
 **Build:** mine resolved handler bodies (from 2.3) for effects, each a typed `triggers` edge from the EventNode:
 - `navigate(...)`/`router.push(...)` → `navigates-to` with route pattern (computed strings → `:param` form, B3)
@@ -195,7 +196,7 @@ The heart of the project. C1 and B1 live here.
 - `setState`/setters → `writes-state` on local state
 **Accept:** fixture `b3-programmatic-nav` green; every effect kind covered by a unit test.
 
-### [ ] 3.3 Journey query — lazy expansion
+### [x] 3.3 Journey query — lazy expansion
 **Failure modes:** B5, B6
 **Build:** `journeys(graph, startInstanceId | routePath, { depth })` in core:
 - BFS over event → effect → route → page-instance → its events…, expanding paths **at query time**; per-path visited-set for cycle handling (a node may repeat across paths, not within one); cap + `truncated` flag.

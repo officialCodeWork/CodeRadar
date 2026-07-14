@@ -1,0 +1,35 @@
+{
+  "failureMode": "C2",
+  "note": "Three wrapper layers: useApi -> apiClient.get -> request -> fetch(`${API_BASE}${path}`). Call sites must resolve through the whole chain with the base folded in: useApi('/projects') → /api/projects. The wrapper bodies themselves must NOT emit placeholder (:path) data sources.",
+  "expect": {
+    "components": [
+      { "name": "ProjectsPage", "instances": 0 },
+      { "name": "CreateProjectButton", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "ProjectsPage", "endpoints": ["/api/projects"] },
+      { "component": "CreateProjectButton", "endpoints": ["/api/projects"] }
+    ],
+    "forbidden": [
+      {
+        "component": "ProjectsPage",
+        "endpoint": ":path",
+        "note": "poison: wrapper-internal placeholder leaked to a consumer"
+      },
+      {
+        "component": "ProjectsPage",
+        "endpoint": "/api:path",
+        "note": "poison: partially-composed wrapper template leaked to a consumer"
+      },
+      {
+        "component": "ProjectsPage",
+        "endpoint": "<dynamic>",
+        "note": "wrapper call collapsed to dynamic means the adapter regressed"
+      }
+    ],
+    "queries": [
+      { "terms": ["Projects overview"], "status": "ok", "top": "ProjectsPage" },
+      { "terms": ["New project"], "status": "ok", "top": "CreateProjectButton" }
+    ]
+  }
+}
