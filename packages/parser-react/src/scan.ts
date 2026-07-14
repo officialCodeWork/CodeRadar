@@ -134,6 +134,8 @@ export function scanReact(options: ScanOptions): LineageGraph {
     }
   };
   const stores = detectStores(project, root, nodes, addEdge, baseUrls, wrappers);
+  /** Event node id → the handler expressions it wires, mined for effects (3.2). */
+  const handlerExprs = new Map<string, Node[]>();
 
   for (const sourceFile of project.getSourceFiles()) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
@@ -171,10 +173,10 @@ export function scanReact(options: ScanOptions): LineageGraph {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores);
+      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs);
     }
 
-    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores);
+    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores, handlerExprs);
     collectHocAliases(sourceFile, hocAliases);
   }
 
@@ -187,8 +189,20 @@ export function scanReact(options: ScanOptions): LineageGraph {
     root,
   );
   resolvePropFlow(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers);
-  resolveHandlerChains(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers, root);
+  // Routes first: navigate() effects (3.2) join to RouteNodes by path shape.
   detectRoutes(project, root, nodes, addEdge);
+  resolveHandlerChains(
+    pendingInstances,
+    instanceIds,
+    nodes,
+    edges,
+    addEdge,
+    baseUrls,
+    wrappers,
+    stores,
+    handlerExprs,
+    root,
+  );
 
   return {
     version: 2,
@@ -407,6 +421,7 @@ function extractBodyFacts(
   baseUrls: string[],
   wrappers: WrapperRegistry,
   stores: StoreRegistry,
+  handlerExprs: Map<string, Node[]>,
 ): void {
   // A wrapper's own body is plumbing: its URL is a parameter placeholder, so a
   // data source emitted here would attribute ":path" to every consumer. Call
@@ -488,8 +503,10 @@ function extractBodyFacts(
     if (!/^on[A-Z]/.test(attrName)) continue;
     const init = attr.getInitializer();
     let handler: string | null = null;
+    let handlerExpr: Node | undefined;
     if (init !== undefined && Node.isJsxExpression(init)) {
       const expr = init.getExpression();
+      handlerExpr = expr;
       // Plain references (handleDelete) and method references (this.refresh).
       if (
         expr !== undefined &&
@@ -508,6 +525,13 @@ function extractBodyFacts(
         event: attrName,
         handler,
       });
+    }
+    // The handler expression is mined for effects in resolveHandlerChains (3.2);
+    // stored by node id so the same evId collects every inline arrow it carries.
+    if (handlerExpr !== undefined) {
+      const list = handlerExprs.get(evId);
+      if (list) list.push(handlerExpr);
+      else handlerExprs.set(evId, [handlerExpr]);
     }
     addEdge({ from: ownerId, to: evId, kind: "handles" });
   }
@@ -708,7 +732,7 @@ function stateVariableName(call: CallExpression): string | null {
   return null;
 }
 
-/** Store registry (TRACKER step 2.4, failure mode C6). */
+/** Store registry (TRACKER step 2.4, failure mode C6; dispatch effects 3.2). */
 interface StoreRegistry {
   /** Redux slice name → its global StateNode id. */
   reduxSlices: Map<string, string>;
@@ -716,6 +740,14 @@ interface StoreRegistry {
   zustandHooks: Map<string, string>;
   /** createAsyncThunk name → the data-source node ids its payload creator hits. */
   thunkSources: Map<string, string[]>;
+  /**
+   * Reducer action-creator name (a `reducers` key of a createSlice) → the
+   * slice StateNode it mutates. Lets `dispatch(clearCart())` resolve to the
+   * cart slice (TRACKER step 3.2, B2 dispatch half).
+   */
+  actionSlices: Map<string, string>;
+  /** createAsyncThunk name → the slice StateNode its extraReducers populate. */
+  thunkSlices: Map<string, string>;
 }
 
 /**
@@ -737,6 +769,8 @@ function detectStores(
     reduxSlices: new Map(),
     zustandHooks: new Map(),
     thunkSources: new Map(),
+    actionSlices: new Map(),
+    thunkSlices: new Map(),
   };
 
   const ensureDataSource = (call: Node, file: string): string | null => {
@@ -788,6 +822,19 @@ function detectStores(
           });
         }
         registry.reduxSlices.set(sliceName, stateId);
+        // Reducer keys are action-creator names: dispatch(clearCart()) writes here.
+        const reducers = config !== undefined ? propertyInitializer(config, "reducers") : undefined;
+        if (reducers !== undefined && Node.isObjectLiteralExpression(reducers)) {
+          for (const property of reducers.getProperties()) {
+            const nameNode =
+              Node.isPropertyAssignment(property) || Node.isMethodDeclaration(property)
+                ? property.getNameNode()
+                : Node.isShorthandPropertyAssignment(property)
+                  ? property.getNameNode()
+                  : undefined;
+            if (nameNode !== undefined) registry.actionSlices.set(nameNode.getText(), stateId);
+          }
+        }
       } else if (callee === "createAsyncThunk") {
         const payloadCreator = init.getArguments()[1];
         const sources: string[] = [];
@@ -835,6 +882,8 @@ function detectStores(
       if (nameInit === undefined || !Node.isStringLiteral(nameInit)) continue;
       const stateId = registry.reduxSlices.get(nameInit.getLiteralValue());
       if (stateId === undefined) continue;
+      // dispatch(fetchUsers()) writes this slice (via the thunk's fulfilled case).
+      registry.thunkSlices.set(thunkName, stateId);
       for (const dsId of sources) {
         addEdge({ from: dsId, to: stateId, kind: "writes-state" });
       }
@@ -857,6 +906,7 @@ function scanClassComponents(
   localeTable: LocaleTable | null,
   pendingInstances: PendingInstance[],
   stores: StoreRegistry,
+  handlerExprs: Map<string, Node[]>,
 ): void {
   for (const cls of sourceFile.getClasses()) {
     const name = cls.getName();
@@ -898,7 +948,7 @@ function scanClassComponents(
     });
     collectInstanceSites(render, id, file, pendingInstances);
     // Whole class body: lifecycle fetches (componentDidMount etc.) + render events.
-    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers, stores);
+    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs);
     extractClassState(cls, name, id, file, nodes, addEdge);
   }
 }
@@ -1309,21 +1359,41 @@ function resolvePropFlow(
 }
 
 /**
- * Handler resolution through props (TRACKER step 2.3, failure mode B1).
+ * Handler resolution + action effects (TRACKER steps 2.3 & 3.2; B1, B3, B2).
  *
- * <button onClick={onSave}> where onSave is a PROP means the real handler
- * lives at a call site — possibly four components up:
+ * Two problems, one machine. First, a handler may be a PROP whose real body
+ * lives at a call site, possibly four components up (B1):
  *
  *   SaveButton onClick={onSave} ← Toolbar onSave={onSaveDraft}
  *     ← EditorPanel onSaveDraft={() => onPersist()} ← DraftEditor onPersist={persistDraft}
  *       → persistDraft body → fetch POST /api/drafts
  *
- * Resolved handler bodies are mined for data sources, emitted as
- * event --triggers--> data-source edges (via: the instance id whose call
- * chain produced them). Chains dead after MAX_HANDLER_DEPTH levels flag the
- * event "unresolved-prop-handler" — visible, never silent.
+ * Local handlers (onClick={refresh}) and inline arrows (onClick={() => …})
+ * resolve the same way, just without leaving the component. Second, once a
+ * handler body is in hand it is mined for every ACTION EFFECT (step 3.2),
+ * each a typed edge from the EventNode:
+ *
+ *   - navigate("/x") / router.push(`/users/${id}`) → navigates-to a RouteNode
+ *     (target folded to :param form, joined to a route by path shape; B3)
+ *   - fetch / axios / wrapper call                 → triggers a data-source
+ *   - dispatch(thunk()) / dispatch(action())       → writes-state on the slice
+ *   - setOpen(true)                                → writes-state on the local slot
+ *
+ * Chains dead after MAX_HANDLER_DEPTH flag the event "unresolved-prop-handler";
+ * a navigation whose target resolves to a shape with no matching route flags
+ * "unresolved-nav". Visible, never silent.
  */
 const MAX_HANDLER_DEPTH = 4;
+
+const NAV_RECEIVERS = new Set(["router", "history", "nav", "navigation"]);
+
+/** An effect mined from a resolved handler body, emitted as an edge from the event. */
+type Effect =
+  | { kind: "triggers"; to: string }
+  | { kind: "writes-state"; to: string }
+  | { kind: "navigates-to"; to: string; via: string }
+  /** Internal: navigation to a resolved path with no matching route → flag only. */
+  | { kind: "nav-unresolved"; to: string };
 
 function resolveHandlerChains(
   pendingInstances: PendingInstance[],
@@ -1333,6 +1403,8 @@ function resolveHandlerChains(
   addEdge: (edge: LineageEdge) => void,
   baseUrls: string[],
   wrappers: WrapperRegistry,
+  stores: StoreRegistry,
+  handlerExprs: Map<string, Node[]>,
   root: string,
 ): void {
   const instancesByDefinition = new Map<string, Array<{ pending: PendingInstance; id: string }>>();
@@ -1346,8 +1418,26 @@ function resolveHandlerChains(
     else instancesByDefinition.set(instance.definitionId, [{ pending, id }]);
   }
 
+  // Route lookup for navigate() targets: exact path first, then param-agnostic
+  // shape (navigate(`/users/${id}`) → "/users/:id" joins route "/users/:userId").
+  const shapeOf = (p: string): string => p.replace(/:[^/]+/g, ":param");
+  const routeByPath = new Map<string, string>();
+  const routeByShape = new Map<string, string>();
+  for (const node of nodes.values()) {
+    if (node.kind !== "route") continue;
+    if (!routeByPath.has(node.path)) routeByPath.set(node.path, node.id);
+    const shape = shapeOf(node.path);
+    if (!routeByShape.has(shape)) routeByShape.set(shape, node.id);
+  }
+  const matchRoute = (pattern: string): string | undefined =>
+    routeByPath.get(pattern) ?? routeByShape.get(shapeOf(pattern));
+
   const fileOf = (node: Node): string =>
     toPosix(path.relative(root, node.getSourceFile().getFilePath()));
+
+  const pushEffect = (effects: Effect[], effect: Effect): void => {
+    if (!effects.some((e) => e.kind === effect.kind && e.to === effect.to)) effects.push(effect);
+  };
 
   // Expression-bodied arrows (`() => onPersist()`) ARE the call — descendants
   // alone would miss them.
@@ -1356,11 +1446,116 @@ function resolveHandlerChains(
     ...body.getDescendantsOfKind(SyntaxKind.CallExpression),
   ];
 
-  /** Collect data-source ids from a handler body, creating nodes as needed. */
-  const minePropHandlerBody = (body: Node, sources: Set<string>): void => {
+  /** navigate("/x") / router.push({pathname}) → resolved route pattern, or null. */
+  const navigationTarget = (call: CallExpression, calleeExpr: Node): ResolvedEndpoint | null => {
+    let isNav = false;
+    if (Node.isIdentifier(calleeExpr)) {
+      const name = calleeExpr.getText();
+      isNav = name === "navigate" || name === "redirect";
+    } else if (Node.isPropertyAccessExpression(calleeExpr)) {
+      const method = calleeExpr.getName();
+      isNav =
+        (method === "push" || method === "replace") &&
+        NAV_RECEIVERS.has(calleeExpr.getExpression().getText().toLowerCase());
+    }
+    if (!isNav) return null;
+    let arg = call.getArguments()[0];
+    if (arg === undefined) return null;
+    if (Node.isObjectLiteralExpression(arg)) {
+      // router.push({ pathname: "/users/[id]" }) — navigate on the pathname.
+      const pathname = arg.getProperty("pathname");
+      arg =
+        pathname !== undefined && Node.isPropertyAssignment(pathname)
+          ? pathname.getInitializer()
+          : undefined;
+      if (arg === undefined) return null;
+    }
+    const resolved = resolveEndpoint(arg, []);
+    // navigate(-1) and fully-dynamic targets carry no route shape — skip.
+    return resolved.resolved === "none" ? null : resolved;
+  };
+
+  /** dispatch(thunk()) / dispatch(action()) → the slice StateNode ids it writes. */
+  const dispatchTargets = (call: CallExpression, calleeExpr: Node): string[] => {
+    const callee = calleeExpr.getText();
+    if (callee !== "dispatch" && !callee.endsWith(".dispatch")) return [];
+    const arg = call.getArguments()[0];
+    if (arg === undefined || !Node.isCallExpression(arg)) return [];
+    const inner = arg.getExpression();
+    const name = Node.isPropertyAccessExpression(inner) ? inner.getName() : inner.getText();
+    const ids: string[] = [];
+    const action = stores.actionSlices.get(name);
+    if (action !== undefined) ids.push(action);
+    const thunk = stores.thunkSlices.get(name);
+    if (thunk !== undefined && !ids.includes(thunk)) ids.push(thunk);
+    return ids;
+  };
+
+  /** setOpen(true) → the local useState slot's StateNode id, or null. */
+  const localStateWrite = (calleeExpr: Node): string | null => {
+    if (!Node.isIdentifier(calleeExpr) || !/^set[A-Z]/.test(calleeExpr.getText())) return null;
+    for (const def of calleeExpr.getDefinitionNodes()) {
+      if (!Node.isBindingElement(def)) continue;
+      const arrayBinding = def.getParent();
+      if (arrayBinding === undefined || !Node.isArrayBindingPattern(arrayBinding)) continue;
+      const first = arrayBinding.getElements()[0];
+      if (first === undefined || !Node.isBindingElement(first)) continue;
+      const enclosing = enclosingDeclName(def);
+      if (enclosing === null) continue;
+      const stId = nodeId("state", enclosing.file, `${enclosing.name}.${first.getName()}`);
+      if (nodes.has(stId)) return stId;
+    }
+    return null;
+  };
+
+  /** The nearest enclosing component/hook declaration — matches state node ids. */
+  const enclosingDeclName = (node: Node): { name: string; file: string } | null => {
+    for (let cur: Node | undefined = node.getParent(); cur !== undefined; cur = cur.getParent()) {
+      if (Node.isFunctionDeclaration(cur)) {
+        const name = cur.getName();
+        if (name !== undefined) return { name, file: fileOf(cur) };
+      }
+      if (Node.isVariableDeclaration(cur)) {
+        const init = cur.getInitializer();
+        if (init !== undefined && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
+          return { name: cur.getName(), file: fileOf(cur) };
+        }
+      }
+    }
+    return null;
+  };
+
+  /** Mine a handler body for every action effect, creating nodes as needed. */
+  const mineHandlerBody = (body: Node, effects: Effect[]): void => {
     for (const call of callsWithin(body)) {
       if (!Node.isCallExpression(call)) continue;
-      const detected = detectDataSource(call, call.getExpression().getText(), baseUrls, wrappers);
+      const calleeExpr = call.getExpression();
+
+      const navTarget = navigationTarget(call, calleeExpr);
+      if (navTarget !== null) {
+        const routeId = matchRoute(navTarget.endpoint);
+        pushEffect(
+          effects,
+          routeId !== undefined
+            ? { kind: "navigates-to", to: routeId, via: navTarget.endpoint }
+            : { kind: "nav-unresolved", to: navTarget.endpoint },
+        );
+        continue;
+      }
+
+      const sliceIds = dispatchTargets(call, calleeExpr);
+      if (sliceIds.length > 0) {
+        for (const stId of sliceIds) pushEffect(effects, { kind: "writes-state", to: stId });
+        continue;
+      }
+
+      const localState = localStateWrite(calleeExpr);
+      if (localState !== null) {
+        pushEffect(effects, { kind: "writes-state", to: localState });
+        continue;
+      }
+
+      const detected = detectDataSource(call, calleeExpr.getText(), baseUrls, wrappers);
       if (detected === null) continue;
       const file = fileOf(call);
       const dsId = nodeId("data-source", file, `${detected.sourceKind}:${detected.endpoint}`);
@@ -1377,7 +1572,7 @@ function resolveHandlerChains(
           resolved: detected.resolved,
         });
       }
-      sources.add(dsId);
+      pushEffect(effects, { kind: "triggers", to: dsId });
     }
   };
 
@@ -1411,15 +1606,16 @@ function resolveHandlerChains(
     expr: Node,
     ownerDefinitionId: string,
     depth: number,
-    sources: Set<string>,
+    effects: Effect[],
   ): boolean => {
     if (depth > MAX_HANDLER_DEPTH) return false;
 
     if (Node.isArrowFunction(expr) || Node.isFunctionExpression(expr)) {
       const body = expr.getBody();
       if (body === undefined) return false;
-      minePropHandlerBody(body, sources);
-      let grounded = sources.size > 0;
+      const before = effects.length;
+      mineHandlerBody(body, effects);
+      let grounded = effects.length > before;
       // Arrow wrapping a prop call: () => onPersist()
       for (const call of callsWithin(body)) {
         if (!Node.isCallExpression(call)) continue;
@@ -1431,7 +1627,7 @@ function resolveHandlerChains(
           : Node.isIdentifier(callee)
             ? callee.getText()
             : null;
-        if (calleeName !== null && resolveChain(ownerDefinitionId, calleeName, depth + 1, sources)) {
+        if (calleeName !== null && resolveChain(ownerDefinitionId, calleeName, depth + 1, effects)) {
           grounded = true;
         }
       }
@@ -1439,7 +1635,7 @@ function resolveHandlerChains(
     }
 
     if (Node.isPropertyAccessExpression(expr) && expr.getExpression().getText().endsWith("props")) {
-      return resolveChain(ownerDefinitionId, expr.getName(), depth + 1, sources);
+      return resolveChain(ownerDefinitionId, expr.getName(), depth + 1, effects);
     }
 
     if (Node.isIdentifier(expr)) {
@@ -1447,19 +1643,19 @@ function resolveHandlerChains(
         if (Node.isFunctionDeclaration(definition)) {
           const body = definition.getBody();
           if (body !== undefined) {
-            minePropHandlerBody(body, sources);
+            mineHandlerBody(body, effects);
             return true;
           }
         }
         if (Node.isVariableDeclaration(definition)) {
           const init = definition.getInitializer();
           if (init !== undefined && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
-            return resolveExpr(init, ownerDefinitionId, depth, sources);
+            return resolveExpr(init, ownerDefinitionId, depth, effects);
           }
         }
         if (Node.isBindingElement(definition) || Node.isParameterDeclaration(definition)) {
           // The handler is itself a prop of the owner — continue up the tree.
-          return resolveChain(ownerDefinitionId, expr.getText(), depth + 1, sources);
+          return resolveChain(ownerDefinitionId, expr.getText(), depth + 1, effects);
         }
       }
     }
@@ -1471,7 +1667,7 @@ function resolveHandlerChains(
     definitionId: string,
     localName: string,
     depth: number,
-    sources: Set<string>,
+    effects: Effect[],
   ): boolean => {
     if (depth > MAX_HANDLER_DEPTH) return false;
     const binding = propBinding(definitionId, localName);
@@ -1488,29 +1684,62 @@ function resolveHandlerChains(
         break;
       }
       if (expr === undefined) continue;
-      if (resolveExpr(expr, pending.ownerId, depth, sources)) grounded = true;
+      if (resolveExpr(expr, pending.ownerId, depth, effects)) grounded = true;
     }
     return grounded;
   };
 
-  // Events whose handler is a prop of their own component: resolve the chain.
-  for (const edge of [...edges]) {
-    if (edge.kind !== "handles") continue;
-    const event = nodes.get(edge.to);
-    const owner = nodes.get(edge.from);
-    if (event === undefined || event.kind !== "event" || event.handler === null) continue;
-    if (owner === undefined || owner.kind !== "component") continue;
-    const bareName = event.handler.replace(/^(this\.)?props\./, "");
-    if (!owner.props.includes(bareName)) continue;
+  /** A bare prop reference (onClick={onSave} / onClick={props.onSave}). */
+  const isPropReference = (expr: Node, owner: { props: string[] }): boolean => {
+    if (Node.isIdentifier(expr)) return owner.props.includes(expr.getText());
+    return Node.isPropertyAccessExpression(expr) && expr.getExpression().getText().endsWith("props");
+  };
 
-    const sources = new Set<string>();
-    const grounded = resolveChain(owner.id, bareName, 1, sources);
-    for (const dsId of sources) {
-      addEdge({ from: event.id, to: dsId, kind: "triggers" });
+  const ownerByEvent = new Map<string, string>();
+  for (const edge of edges) {
+    if (edge.kind === "handles") ownerByEvent.set(edge.to, edge.from);
+  }
+
+  // Every wired handler: resolve its body (prop chain, local ref, or inline
+  // arrow) and emit the effects it produces as edges from the event.
+  for (const [eventId, exprs] of handlerExprs) {
+    const event = nodes.get(eventId);
+    const ownerId = ownerByEvent.get(eventId);
+    const owner = ownerId !== undefined ? nodes.get(ownerId) : undefined;
+    if (event === undefined || event.kind !== "event") continue;
+    if (owner === undefined || owner.kind !== "component") continue;
+
+    const effects: Effect[] = [];
+    let grounded = false;
+    let isPropHandler = false;
+    for (const expr of exprs) {
+      if (isPropReference(expr, owner)) {
+        isPropHandler = true;
+        // Preserve the B1 depth budget: enter the prop chain at depth 1.
+        const propName = Node.isPropertyAccessExpression(expr) ? expr.getName() : expr.getText();
+        if (resolveChain(owner.id, propName, 1, effects)) grounded = true;
+      } else if (resolveExpr(expr, owner.id, 1, effects)) {
+        grounded = true;
+      }
     }
-    if (!grounded) {
-      event.flags = [...(event.flags ?? []), "unresolved-prop-handler"];
+
+    let navUnresolved = false;
+    for (const effect of effects) {
+      if (effect.kind === "nav-unresolved") {
+        navUnresolved = true;
+        continue;
+      }
+      addEdge({
+        from: eventId,
+        to: effect.to,
+        kind: effect.kind,
+        ...(effect.kind === "navigates-to" ? { via: effect.via } : {}),
+      });
     }
+    const flags: string[] = [];
+    if (isPropHandler && !grounded) flags.push("unresolved-prop-handler");
+    if (navUnresolved) flags.push("unresolved-nav");
+    if (flags.length > 0) event.flags = [...(event.flags ?? []), ...flags];
   }
 }
 

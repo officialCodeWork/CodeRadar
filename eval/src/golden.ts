@@ -53,6 +53,22 @@ export interface GoldenRoute {
   expectedFail?: string;
 }
 
+export interface GoldenEffect {
+  /** Component that owns the event (a `handles` edge from it reaches the event). */
+  component: string;
+  /** Event name the effect hangs off, e.g. "onClick", "onSubmit". */
+  event: string;
+  /** The effect edge kind asserted from the event node. */
+  effect: "navigates-to" | "triggers" | "writes-state";
+  /**
+   * Expected target, matched against the edge's destination node:
+   * a route path (navigates-to), a data-source endpoint (triggers), or a
+   * state/slice name (writes-state).
+   */
+  to: string;
+  expectedFail?: string;
+}
+
 export interface Golden {
   failureMode: string;
   note?: string;
@@ -72,6 +88,8 @@ export interface Golden {
     routes?: GoldenRoute[];
     /** Paths that must NOT exist as routes (api handlers, _app…). Never xfails. */
     forbiddenRoutes?: string[];
+    /** Action effects (step 3.2): event → navigates-to / triggers / writes-state. */
+    effects?: GoldenEffect[];
   };
 }
 
@@ -80,7 +98,7 @@ export type CheckStatus = "pass" | "fail" | "xfail" | "unexpected-pass";
 export interface CheckResult {
   /** e.g. "components:DataTable", "attribution:DataTable@pages/UsersPage.tsx" */
   id: string;
-  kind: "components" | "attributions" | "forbidden" | "queries" | "routes";
+  kind: "components" | "attributions" | "forbidden" | "queries" | "routes" | "effects";
   status: CheckStatus;
   detail?: string;
 }
