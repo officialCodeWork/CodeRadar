@@ -67,6 +67,12 @@ export interface ComponentMatch {
 export interface MatchQuery {
   terms?: string[];
   structure?: StructureDescriptor;
+  /**
+   * Per-term weight multipliers (Phase 4.4): terms a vision adapter found
+   * inside an annotation (a circle/arrow the user drew) are boosted, e.g. 3×,
+   * so the emphasized element outranks incidental text.
+   */
+  boosts?: Record<string, number>;
 }
 
 /** Weight of a full structural match relative to a rare matched term. */
@@ -130,8 +136,14 @@ export function matchComponents(
     return null;
   };
 
-  const termWeight = (term: string): number =>
-    tokenize(term).reduce((sum, t) => sum + idf(t), 0);
+  // Boost keys are normalized so they match the normalized query terms below.
+  const boosts = new Map(
+    Object.entries(query.boosts ?? {}).map(([term, weight]) => [normalizeText(term), weight]),
+  );
+  const termWeight = (term: string): number => {
+    const base = tokenize(term).reduce((sum, t) => sum + idf(t), 0);
+    return base * (boosts.get(term) ?? 1);
+  };
 
   // Render tree (definition level): A renders B when A has a `renders` edge to
   // an instance whose `instance-of` points at B. Used to collapse nested

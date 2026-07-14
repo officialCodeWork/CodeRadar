@@ -42,6 +42,9 @@ importers:
       '@coderadar/parser-react':
         specifier: workspace:*
         version: link:../parser-react
+      '@coderadar/vision':
+        specifier: workspace:*
+        version: link:../vision
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
@@ -78,6 +81,25 @@ importers:
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
+    devDependencies:
+      '@coderadar/vision':
+        specifier: workspace:*
+        version: link:../vision
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.20.1)(yaml@2.9.0)
+
+  packages/vision:
+    dependencies:
+      '@coderadar/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

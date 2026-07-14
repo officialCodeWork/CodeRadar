@@ -1,0 +1,13 @@
+{
+  "note": "Pre-extracted vision output (checked in — no live API). The user circled 'Revenue breakdown'. Without the annotation this is ambiguous (RevenuePanel and CostPanel both share 'Total' and each own one 'breakdown' term); the 3x annotation boost resolves it to RevenuePanel.",
+  "terms": ["Revenue breakdown", "Cost breakdown", "Total"],
+  "structure": {},
+  "annotations": [
+    {
+      "kind": "circle",
+      "bounds": { "x": 20, "y": 40, "w": 180, "h": 32 },
+      "terms": ["Revenue breakdown"]
+    }
+  ],
+  "looksLikeApp": true
+}
