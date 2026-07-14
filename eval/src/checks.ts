@@ -9,7 +9,12 @@ import {
 
 import type { CheckResult, FixtureResult, Golden } from "./golden.js";
 
-export function runChecks(fixture: string, golden: Golden, graph: LineageGraph): FixtureResult {
+export function runChecks(
+  fixture: string,
+  golden: Golden,
+  graph: LineageGraph,
+  aliases?: Record<string, string>,
+): FixtureResult {
   const checks: CheckResult[] = [];
   const attribution = { truePositives: 0, falsePositives: 0, falseNegatives: 0 };
 
@@ -218,7 +223,11 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
 
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+") || JSON.stringify(query.structure)}`;
-    const result = matchComponents(graph, { terms: query.terms, structure: query.structure });
+    const result = matchComponents(graph, {
+      terms: query.terms,
+      structure: query.structure,
+      ...(aliases !== undefined ? { aliases } : {}),
+    });
     let passed = result.status === query.status;
     let detail: string | undefined;
     if (!passed) {

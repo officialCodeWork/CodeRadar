@@ -63,6 +63,17 @@ export interface ComponentMatch {
  * Returns `ambiguous` when the leaders tie on rarity-weighted score (a lone
  * generic term is honestly ambiguous), `declined("no-signal")` on no match.
  */
+/**
+ * A recorded correction (Phase 4.6, failure mode G4): a human confirmed that a
+ * set of terms means a specific component. Fed back as first-class evidence so
+ * the next identical query resolves the same way.
+ */
+export interface Correction {
+  terms: string[];
+  /** Component definition name the terms were confirmed to mean. */
+  component: string;
+}
+
 /** A screenshot/ticket query: visible text, a structure descriptor, or both. */
 export interface MatchQuery {
   terms?: string[];
@@ -73,10 +84,23 @@ export interface MatchQuery {
    * so the emphasized element outranks incidental text.
    */
   boosts?: Record<string, number>;
+  /**
+   * Business-vocabulary glossary (Phase 4.6, failure mode E2), phrase →
+   * component name/id — "invoice widget" → BillingSummaryCard. An alias hit is
+   * high-weight evidence, so a term that appears nowhere in the code still
+   * resolves.
+   */
+  aliases?: Record<string, string>;
+  /** Recorded corrections (Phase 4.6) — the highest-weight signal of all. */
+  corrections?: Correction[];
 }
 
 /** Weight of a full structural match relative to a rare matched term. */
 const STRUCTURE_WEIGHT = 3;
+/** A glossary alias hit outweighs any text/structure evidence (Phase 4.6). */
+const ALIAS_WEIGHT = 10;
+/** A recorded human correction is the strongest signal of all. */
+const CORRECTION_WEIGHT = 25;
 
 /** Back-compat text-only entry point. */
 export function matchComponentsByText(
@@ -144,6 +168,13 @@ export function matchComponents(
     const base = tokenize(term).reduce((sum, t) => sum + idf(t), 0);
     return base * (boosts.get(term) ?? 1);
   };
+
+  // Glossary aliases + recorded corrections (Phase 4.6). Both are authority
+  // signals — a phrase resolves even when it appears nowhere in the code.
+  const aliasEntries = Object.entries(query.aliases ?? {});
+  const corrections = query.corrections ?? [];
+  const containsTerm = (needle: string): boolean =>
+    needle.length > 0 && queryTerms.some((t) => t === needle || t.includes(needle) || needle.includes(t));
 
   // Render tree (definition level): A renders B when A has a `renders` edge to
   // an instance whose `instance-of` points at B. Used to collapse nested
@@ -230,15 +261,46 @@ export function matchComponents(
       });
     }
 
-    if (covered.size === 0 && structureFit === 0) continue;
-    const coverage = queryTerms.length > 0 ? covered.size / queryTerms.length : structureFit;
+    // Authority: glossary aliases and recorded corrections that name this
+    // component, when the query actually contains their phrase/terms.
+    let authority = 0;
+    const normName = normalizeText(component.name);
+    for (const [phrase, target] of aliasEntries) {
+      if (normalizeText(target) !== normName && target !== component.id) continue;
+      const normPhrase = normalizeText(phrase);
+      if (!containsTerm(normPhrase)) continue;
+      authority += ALIAS_WEIGHT;
+      covered.add(normPhrase);
+      if (!matched.includes(normPhrase)) matched.push(normPhrase);
+      evidence.push({
+        kind: "alias",
+        detail: `glossary alias "${phrase}" → ${component.name}`,
+        loc: component.loc,
+      });
+    }
+    for (const correction of corrections) {
+      if (normalizeText(correction.component) !== normName) continue;
+      const cterms = correction.terms.map(normalizeText).filter((t) => t.length > 0);
+      if (cterms.length === 0 || !cterms.every(containsTerm)) continue;
+      authority += CORRECTION_WEIGHT;
+      for (const ct of cterms) covered.add(ct);
+      evidence.push({
+        kind: "correction",
+        detail: `recorded correction [${correction.terms.join(", ")}] → ${component.name}`,
+        loc: component.loc,
+      });
+    }
+
+    if (covered.size === 0 && structureFit === 0 && authority === 0) continue;
+    const coverage =
+      authority > 0 ? 1 : queryTerms.length > 0 ? covered.size / queryTerms.length : structureFit;
     scored.push({
       match: {
         component,
         instances: instancesByDefinition.get(component.id) ?? [],
         matchedText: matched.length > 0 ? matched : [...covered],
       },
-      score: textScore + structureFit * STRUCTURE_WEIGHT,
+      score: textScore + structureFit * STRUCTURE_WEIGHT + authority,
       coverage: Math.max(coverage, structureFit),
       covered,
       evidence,

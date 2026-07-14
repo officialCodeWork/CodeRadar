@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-import { matchComponentsByText } from "./query.js";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { loadCorrections, recordCorrection } from "./corrections.js";
+import { matchComponents, matchComponentsByText } from "./query.js";
 import { editDistance, fuzzyTokenMatch } from "./text.js";
 import { type ComponentNode, type LineageGraph, nodeId } from "./types.js";
 
@@ -87,5 +92,49 @@ describe("matchComponentsByText scorer (TRACKER 4.1, A4/A10)", () => {
 
   it("declines when nothing matches", () => {
     expect(matchComponentsByText(graph(forms), ["Purchase history"]).status).toBe("declined");
+  });
+});
+
+describe("alias glossary & corrections (TRACKER 4.6, E2/G4)", () => {
+  const g = graph([
+    component("BillingSummaryCard", ["Billing summary", "Amount due"]),
+    component("InvoiceList", ["Recent invoices"]),
+  ]);
+
+  it("resolves a business-vocab phrase that appears nowhere in the code", () => {
+    expect(matchComponentsByText(g, ["invoice widget"]).status).toBe("declined");
+    const withAlias = matchComponents(g, {
+      terms: ["invoice widget"],
+      aliases: { "invoice widget": "BillingSummaryCard" },
+    });
+    expect(withAlias.status).toBe("ok");
+    expect(withAlias.candidates[0]?.value.component.name).toBe("BillingSummaryCard");
+    expect(withAlias.candidates[0]?.evidence.some((e) => e.kind === "alias")).toBe(true);
+  });
+
+  it("a recorded correction overrides an otherwise-correct text match", () => {
+    const before = matchComponents(g, { terms: ["Recent invoices"] });
+    expect(before.candidates[0]?.value.component.name).toBe("InvoiceList");
+    const after = matchComponents(g, {
+      terms: ["Recent invoices"],
+      corrections: [{ terms: ["Recent invoices"], component: "BillingSummaryCard" }],
+    });
+    expect(after.candidates[0]?.value.component.name).toBe("BillingSummaryCard");
+    expect(after.candidates[0]?.evidence.some((e) => e.kind === "correction")).toBe(true);
+  });
+
+  const tmpFiles: string[] = [];
+  afterEach(() => {
+    for (const f of tmpFiles.splice(0)) fs.rmSync(f, { force: true });
+  });
+
+  it("round-trips corrections through a JSONL store; the next query flips top-1", () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "uil-")), "corrections.jsonl");
+    tmpFiles.push(file);
+    expect(loadCorrections(file)).toEqual([]);
+    recordCorrection(file, { terms: ["Recent invoices"], component: "BillingSummaryCard" });
+    const corrections = loadCorrections(file);
+    const result = matchComponents(g, { terms: ["Recent invoices"], corrections });
+    expect(result.candidates[0]?.value.component.name).toBe("BillingSummaryCard");
   });
 });

@@ -1,0 +1,5 @@
+# Business-vocabulary glossary, checked into the target repo (TRACKER 4.6, E2).
+# A phrase users say maps to the component it actually means, even when that
+# phrase appears nowhere in the rendered text.
+"invoice widget": BillingSummaryCard
+"amount owed": BillingSummaryCard
