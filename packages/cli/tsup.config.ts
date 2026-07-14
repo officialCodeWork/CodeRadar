@@ -1,0 +1,20 @@
+import { defineConfig } from "tsup";
+
+// ui-lineage ships as a single self-contained package: the internal @coderadar/*
+// workspace packages are bundled into the output, while the heavy third-party
+// deps (ts-morph, yaml, commander) stay external and install normally.
+export default defineConfig({
+  entry: {
+    index: "src/index.ts", // CLI bin (keeps its #!/usr/bin/env node shebang)
+    lib: "src/lib.ts", // library entry
+  },
+  format: ["esm"],
+  target: "node20",
+  // Inline the workspace packages' TYPES too, so the published .d.ts has no
+  // dangling references to the unpublished @coderadar/* internals.
+  dts: { resolve: true },
+  clean: true,
+  sourcemap: true,
+  noExternal: [/^@coderadar\//],
+  external: ["ts-morph", "yaml", "commander"],
+});

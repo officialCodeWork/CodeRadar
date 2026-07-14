@@ -1,7 +1,8 @@
 {
   "name": "@coderadar/parser-react",
   "version": "0.1.0",
-  "description": "React/TSX parser for CodeRadar — extracts components, hooks, data sources, state, and events into a lineage graph.",
+  "private": true,
+  "description": "React/TSX parser for CodeRadar — extracts components, hooks, data sources, state, and events into a lineage graph. Bundled into the published `ui-lineage` package.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Eval outputs (scorecard is regenerated every run; history is recorded deliberately)
 eval/scorecard.json
+
+# ui-lineage scanned graphs
+*.graph.json
