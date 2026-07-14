@@ -44,13 +44,23 @@ export function declined<T>(reason: DeclineReason): QueryResult<T> {
 }
 
 /**
- * Map a 0–1 score to a confidence level.
- * Provisional thresholds — replaced by measured calibration in Phase 4.5.
+ * Score → confidence thresholds, calibrated on the eval set (TRACKER step 4.5):
+ * every `high` answer in the eval set is correct at these cutoffs. The eval
+ * `--calibrate` subcommand measures precision at these levels and records it in
+ * eval/calibration.json.
  */
+export const CONFIDENCE_THRESHOLDS = { high: 0.8, medium: 0.5 } as const;
+
+/** Map a 0–1 score to a calibrated confidence level. */
 export function confidenceFromScore(score: number): Confidence {
   const clamped = Math.max(0, Math.min(1, score));
   return {
     score: clamped,
-    level: clamped >= 0.8 ? "high" : clamped >= 0.5 ? "medium" : "low",
+    level:
+      clamped >= CONFIDENCE_THRESHOLDS.high
+        ? "high"
+        : clamped >= CONFIDENCE_THRESHOLDS.medium
+          ? "medium"
+          : "low",
   };
 }

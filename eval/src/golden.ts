@@ -148,12 +148,27 @@ export interface CheckResult {
   detail?: string;
 }
 
+/** Per-query outcome, for confidence calibration and honesty metrics (step 4.5). */
+export interface QueryOutcome {
+  terms: string[];
+  expectedStatus: "ok" | "ambiguous" | "declined";
+  gotStatus: "ok" | "ambiguous" | "declined";
+  /** Top candidate name + its confidence (ok results). */
+  top?: string;
+  confidence?: "high" | "medium" | "low";
+  score?: number;
+  /** ok: top === golden.top; otherwise gotStatus === expectedStatus. */
+  correct: boolean;
+}
+
 export interface FixtureResult {
   fixture: string;
   failureMode: string;
   checks: CheckResult[];
   /** Attribution tallies for lineage precision/recall. */
   attribution: { truePositives: number; falsePositives: number; falseNegatives: number };
+  /** Query outcomes (populated for fixtures with `queries`). */
+  queries: QueryOutcome[];
 }
 
 export interface Scorecard {
@@ -168,6 +183,12 @@ export interface Scorecard {
     lineagePrecision: number | null;
     lineageRecall: number | null;
     matchAccuracy: number | null;
+    /** Fraction of high-confidence `ok` answers that are correct (step 4.5). */
+    highConfidenceCorrect: number | null;
+    /** Fraction of genuinely-ambiguous queries the matcher returned ambiguous. */
+    ambiguityHonesty: number | null;
+    /** Fraction of `ok` answers that are confidently wrong (the poison rate). */
+    poisonRate: number | null;
   };
 }
 
@@ -178,4 +199,7 @@ export interface Thresholds {
   minLineagePrecision?: number;
   minLineageRecall?: number;
   minMatchAccuracy?: number;
+  minHighConfidenceCorrect?: number;
+  minAmbiguityHonesty?: number;
+  maxPoisonRate?: number;
 }

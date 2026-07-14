@@ -348,11 +348,25 @@ export function matchComponents(
   const tied =
     top === undefined ? [] : winners.filter((s) => Math.abs(s.score - top.score) < 1e-9);
   if (tied.length > 1) {
-    const names = tied.map((s) => s.match.component.name).join(", ");
+    // A concrete question built from the DIFFERENCES between the leaders: each
+    // gets the first text unique to it, so the caller can answer with a term
+    // that resolves the tie (D6/G1).
+    const options = tied.slice(0, 3).map((s) => {
+      const elsewhere = new Set(
+        tied
+          .filter((o) => o !== s)
+          .flatMap((o) => o.match.component.renderedText.map((r) => normalizeText(r.text))),
+      );
+      const distinctive = s.match.component.renderedText.find(
+        (r) => normalizeText(r.text).length > 0 && !elsewhere.has(normalizeText(r.text)),
+      );
+      return distinctive !== undefined
+        ? `${s.match.component.name} (shows "${distinctive.text}")`
+        : s.match.component.name;
+    });
     return ambiguous(
       candidates,
-      `Several components match equally well (${names}). ` +
-        `Which page is the screenshot from, or what other distinctive text is visible?`,
+      `Which one — ${options.join(", or ")}? Add a term unique to the one you mean.`,
     );
   }
   return ok(candidates);
