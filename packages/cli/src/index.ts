@@ -6,6 +6,8 @@ import {
   type Candidate,
   collectGraphMeta,
   type ComponentMatch,
+  type JourneyPath,
+  journeys,
   type LineageGraph,
   loadGraph as loadGraphFile,
   matchComponentsByText,
@@ -120,6 +122,50 @@ program
     }
     console.log(`  confidence: ${result.candidates[0].confidence.level}`);
   });
+
+program
+  .command("journeys")
+  .description("Trace user-journey paths from a page or component (click → navigate → click…)")
+  .argument("<start>", "route path (/users/:id), component name, or instance id")
+  .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
+  .option("-d, --depth <n>", "max navigation levels per path", "3")
+  .action((start: string, opts: { graph: string; depth: string }) => {
+    const graph = loadGraph(opts.graph);
+    const depth = Number.parseInt(opts.depth, 10);
+    const result = journeys(graph, start, { depth: Number.isNaN(depth) ? 3 : depth });
+    if (result.status === "declined" || result.candidates[0] === undefined) {
+      console.error(`No journeys from ${start} (${result.declineReason ?? "no result"}).`);
+      process.exitCode = 1;
+      return;
+    }
+    const paths = result.candidates[0].value;
+    if (paths.length === 0) {
+      console.log(`No user actions found on ${start}.`);
+      return;
+    }
+    console.log(`${paths.length} journey path(s) from ${start}:\n`);
+    for (const path of paths) printJourneyPath(path);
+  });
+
+const STEP_ARROW: Record<string, string> = {
+  page: "▸",
+  event: "•",
+  navigate: "→",
+  fetch: "⇢",
+  "state-write": "✎",
+};
+
+function printJourneyPath(path: JourneyPath): void {
+  const parts = path.steps.map((step) => {
+    const glyph = STEP_ARROW[step.kind] ?? "·";
+    const cond = step.condition !== undefined ? ` [${step.condition.expression}]` : "";
+    const label =
+      step.kind === "event" ? `${step.label}()` : step.kind === "fetch" ? `fetch ${step.label}` : step.label;
+    return `${glyph} ${label}${cond}`;
+  });
+  const tag = path.end === "cycle" ? "  ↩ cycle" : path.end === "depth-limit" ? "  … (depth limit)" : "";
+  console.log(`  ${parts.join("  ")}${tag}`);
+}
 
 function printMatchCandidate(candidate: Candidate<ComponentMatch>): void {
   const match = candidate.value;

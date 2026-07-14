@@ -69,6 +69,19 @@ export interface GoldenEffect {
   expectedFail?: string;
 }
 
+export interface GoldenJourney {
+  /** Entry point: a route path ("/users") or a component name. */
+  start: string;
+  depth?: number;
+  /**
+   * Journey paths that must appear, identified by the ordered page labels
+   * (route paths) they visit. `end` asserts how the path terminates —
+   * "cycle" is the B6 guarantee that a list ↔ detail loop stays finite.
+   */
+  expect: Array<{ pages: string[]; end?: "terminal" | "cycle" | "depth-limit" }>;
+  expectedFail?: string;
+}
+
 export interface Golden {
   failureMode: string;
   note?: string;
@@ -90,6 +103,8 @@ export interface Golden {
     forbiddenRoutes?: string[];
     /** Action effects (step 3.2): event → navigates-to / triggers / writes-state. */
     effects?: GoldenEffect[];
+    /** Journey paths (step 3.3): page → event → effect → page, lazily expanded. */
+    journeys?: GoldenJourney[];
   };
 }
 
@@ -98,7 +113,7 @@ export type CheckStatus = "pass" | "fail" | "xfail" | "unexpected-pass";
 export interface CheckResult {
   /** e.g. "components:DataTable", "attribution:DataTable@pages/UsersPage.tsx" */
   id: string;
-  kind: "components" | "attributions" | "forbidden" | "queries" | "routes" | "effects";
+  kind: "components" | "attributions" | "forbidden" | "queries" | "routes" | "effects" | "journeys";
   status: CheckStatus;
   detail?: string;
 }

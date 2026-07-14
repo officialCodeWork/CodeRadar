@@ -18,12 +18,15 @@ import { normalizeText, textMatches } from "./text.js";
 import type {
   ComponentNode,
   DataSourceNode,
+  EdgeCondition,
   EventNode,
   Evidence,
   InstanceNode,
   LineageEdge,
   LineageGraph,
   LineageNode,
+  RouteNode,
+  SourceLocation,
   StateNode,
 } from "./types.js";
 
@@ -260,6 +263,217 @@ export function traceLineage(graph: LineageGraph, id: string): QueryResult<Linea
   ];
   // Static edge traversal is reliable; per-instance attribution sharpens in Phase 2.2.
   return ok([{ value: lineage, confidence: confidenceFromScore(0.9), evidence }]);
+}
+
+export type JourneyStepKind = "page" | "event" | "navigate" | "fetch" | "state-write";
+
+/** One node on a user-journey path, with the condition (if any) that gated it. */
+export interface JourneyStep {
+  kind: JourneyStepKind;
+  nodeId: string;
+  /** Route path (page/navigate), event name, endpoint (fetch), or state name. */
+  label: string;
+  loc?: SourceLocation;
+  /** Flag/role/branch guarding the edge into this step (populated by step 3.5). */
+  condition?: EdgeCondition;
+}
+
+/** How a journey path ended: a leaf effect, a revisited page, or the depth cap. */
+export type JourneyEnd = "terminal" | "cycle" | "depth-limit";
+
+export interface JourneyPath {
+  steps: JourneyStep[];
+  end: JourneyEnd;
+}
+
+export interface JourneyOptions {
+  /** Maximum number of page (navigation) levels a path may span. Default 3. */
+  depth?: number;
+  /** Total path cap; when hit, the result is flagged truncated. Default 256. */
+  maxPaths?: number;
+}
+
+/**
+ * Enumerate the user-journey paths reachable from a page or component
+ * (TRACKER step 3.3, failure modes B5/B6).
+ *
+ * A journey alternates page → event → effect: on each screen the user can fire
+ * an event (a click, submit…), whose action effects (step 3.2) either navigate
+ * to another route — continuing the journey on the next page — or terminate the
+ * path at a fetch or a state write. Paths are expanded at query time; a per-path
+ * visited-set of pages means a node may recur across paths but never loops
+ * within one (the list ↔ detail cycle yields a finite path that ends "cycle").
+ *
+ * `start` is a route path ("/users/:id"), an instance id, or a component
+ * name/id. Returns one candidate whose value is every path found.
+ */
+export function journeys(
+  graph: LineageGraph,
+  start: string,
+  options: JourneyOptions = {},
+): QueryResult<JourneyPath[]> {
+  const depth = options.depth ?? 3;
+  const maxPaths = options.maxPaths ?? 256;
+  const byId = new Map<string, LineageNode>(graph.nodes.map((n) => [n.id, n]));
+  const out = new Map<string, LineageEdge[]>();
+  for (const e of graph.edges) {
+    const list = out.get(e.from);
+    if (list) list.push(e);
+    else out.set(e.from, [e]);
+  }
+  const outEdges = (id: string): LineageEdge[] => out.get(id) ?? [];
+
+  // Resolve the entry point to a page component + the label to show for it.
+  let startComponentId: string;
+  let startLabel: string;
+  const route = graph.nodes.find((n): n is RouteNode => n.kind === "route" && n.path === start);
+  if (route !== undefined) {
+    const pageEdge = outEdges(route.id).find((e) => e.kind === "routes-to");
+    if (pageEdge === undefined) return declined("invalid-target");
+    startComponentId = pageEdge.to;
+    startLabel = route.path;
+  } else {
+    const node = byId.get(start) ?? graph.nodes.find((n) => n.kind === "component" && n.name === start);
+    if (node === undefined) return declined("not-found");
+    if (node.kind === "instance") {
+      startComponentId = node.definitionId;
+      startLabel = byId.get(node.definitionId)?.name ?? start;
+    } else if (node.kind === "component") {
+      startComponentId = node.id;
+      startLabel = node.name;
+    } else {
+      return declined("invalid-target");
+    }
+  }
+  if (!byId.has(startComponentId)) return declined("not-found");
+
+  // The page a route lands on, indexed for the navigate → route → page hop.
+  const pageOfRoute = (routeId: string): { componentId: string; label: string } | null => {
+    const edge = outEdges(routeId).find((e) => e.kind === "routes-to");
+    const routeNode = byId.get(routeId);
+    if (edge === undefined || routeNode === undefined || routeNode.kind !== "route") return null;
+    return { componentId: edge.to, label: routeNode.path };
+  };
+
+  // All events on a screen: those the page component handles plus those of any
+  // component in its render subtree (a button living in a child component is
+  // still on this page). Memoized; the subtree walk is cycle-guarded.
+  const eventsMemo = new Map<string, string[]>();
+  const screenEvents = (componentId: string): string[] => {
+    const cached = eventsMemo.get(componentId);
+    if (cached !== undefined) return cached;
+    const subtree = new Set<string>([componentId]);
+    const stack = [componentId];
+    while (stack.length > 0) {
+      const cid = stack.pop() as string;
+      for (const edge of outEdges(cid)) {
+        if (edge.kind !== "renders") continue;
+        const inst = byId.get(edge.to);
+        if (inst === undefined || inst.kind !== "instance") continue;
+        if (!subtree.has(inst.definitionId) && byId.get(inst.definitionId)?.kind === "component") {
+          subtree.add(inst.definitionId);
+          stack.push(inst.definitionId);
+        }
+      }
+    }
+    const events: string[] = [];
+    for (const cid of subtree) {
+      for (const edge of outEdges(cid)) {
+        if (edge.kind === "handles" && byId.get(edge.to)?.kind === "event") events.push(edge.to);
+      }
+    }
+    eventsMemo.set(componentId, events);
+    return events;
+  };
+
+  const paths: JourneyPath[] = [];
+  let truncated = false;
+  const pageStep = (componentId: string, label: string): JourneyStep => {
+    const node = byId.get(componentId);
+    return { kind: "page", nodeId: componentId, label, ...(node ? { loc: node.loc } : {}) };
+  };
+
+  // Depth-first expansion. `visitedPages` is copied down each branch so a page
+  // may appear in sibling paths but a single path never revisits one.
+  const expand = (
+    componentId: string,
+    label: string,
+    prefix: JourneyStep[],
+    visitedPages: Set<string>,
+  ): void => {
+    if (paths.length >= maxPaths) {
+      truncated = true;
+      return;
+    }
+    const pagePath = [...prefix, pageStep(componentId, label)];
+    if (visitedPages.has(componentId)) {
+      paths.push({ steps: pagePath, end: "cycle" });
+      return;
+    }
+    if (visitedPages.size + 1 >= depth) {
+      // One more page would exceed the depth budget — stop here.
+      paths.push({ steps: pagePath, end: "depth-limit" });
+      truncated = true;
+      return;
+    }
+    const nextVisited = new Set(visitedPages).add(componentId);
+
+    let branched = false;
+    for (const eventId of screenEvents(componentId)) {
+      const event = byId.get(eventId);
+      if (event === undefined || event.kind !== "event") continue;
+      for (const effect of outEdges(eventId)) {
+        const eventStep: JourneyStep = {
+          kind: "event",
+          nodeId: eventId,
+          label: event.event,
+          loc: event.loc,
+          ...(effect.condition ? { condition: effect.condition } : {}),
+        };
+        if (effect.kind === "navigates-to") {
+          const page = pageOfRoute(effect.to);
+          if (page === null) continue;
+          branched = true;
+          const navStep: JourneyStep = {
+            kind: "navigate",
+            nodeId: effect.to,
+            label: byId.get(effect.to)?.name ?? effect.to,
+            ...(byId.get(effect.to) ? { loc: byId.get(effect.to)!.loc } : {}),
+            ...(effect.condition ? { condition: effect.condition } : {}),
+          };
+          expand(page.componentId, page.label, [...pagePath, eventStep, navStep], nextVisited);
+        } else if (effect.kind === "triggers" || effect.kind === "writes-state") {
+          const target = byId.get(effect.to);
+          if (target === undefined) continue;
+          branched = true;
+          const leaf: JourneyStep =
+            target.kind === "data-source"
+              ? { kind: "fetch", nodeId: target.id, label: target.endpoint, loc: target.loc }
+              : { kind: "state-write", nodeId: target.id, label: target.name, loc: target.loc };
+          if (paths.length >= maxPaths) {
+            truncated = true;
+            return;
+          }
+          paths.push({ steps: [...pagePath, eventStep, leaf], end: "terminal" });
+        }
+      }
+    }
+    // A screen with no expandable events is itself a terminal path.
+    if (!branched) paths.push({ steps: pagePath, end: "terminal" });
+  };
+
+  expand(startComponentId, startLabel, [], new Set());
+
+  const evidence: Evidence[] = [
+    {
+      kind: "edge-chain",
+      detail:
+        `Expanded ${paths.length} journey path(s) from ${startLabel} to depth ${depth}` +
+        `${truncated ? " (truncated)" : ""}`,
+      loc: byId.get(startComponentId)?.loc,
+    },
+  ];
+  return ok([{ value: paths, confidence: confidenceFromScore(0.9), evidence }]);
 }
 
 function groupInstances(graph: LineageGraph): Map<string, InstanceNode[]> {

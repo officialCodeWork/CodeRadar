@@ -1,0 +1,29 @@
+{
+  "failureMode": "B6",
+  "note": "Journey query with lazy expansion over a list ↔ detail loop. From /users a click navigates to /users/:userId, whose 'Back' click navigates to /users — a cycle. journeys() expands paths at query time with a per-path visited-set, so the loop yields a finite path that ends 'cycle' rather than hanging. Terminal paths end at a fetch. A depth-n request on the cyclic graph must terminate quickly (asserted in unit tests).",
+  "expect": {
+    "components": [
+      { "name": "UsersList", "instances": 0 },
+      { "name": "UserDetail", "instances": 0 }
+    ],
+    "routes": [
+      { "path": "/users", "component": "UsersList" },
+      { "path": "/users/:userId", "component": "UserDetail" }
+    ],
+    "journeys": [
+      {
+        "start": "/users",
+        "depth": 3,
+        "expect": [
+          { "pages": ["/users", "/users/:userId", "/users"], "end": "cycle" },
+          { "pages": ["/users", "/users/:userId"], "end": "terminal" },
+          { "pages": ["/users"], "end": "terminal" }
+        ]
+      }
+    ],
+    "queries": [
+      { "terms": ["All users"], "status": "ok", "top": "UsersList" },
+      { "terms": ["User profile"], "status": "ok", "top": "UserDetail" }
+    ]
+  }
+}

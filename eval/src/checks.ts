@@ -1,6 +1,7 @@
 /** Run one fixture's golden checks against its scanned graph. */
 
 import {
+  journeys,
   type LineageGraph,
   matchComponentsByText,
   traceLineage,
@@ -163,6 +164,32 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
           ? "component not found"
           : `no ${expected.effect} edge from a ${expected.component}.${expected.event} event to ${expected.to}`,
     );
+  }
+
+  for (const expected of golden.expect.journeys ?? []) {
+    for (const want of expected.expect) {
+      const id = `journey:${expected.start}=>${want.pages.join(">")}${want.end !== undefined ? `[${want.end}]` : ""}`;
+      const result = journeys(graph, expected.start, { depth: expected.depth ?? 3 });
+      const found = (result.candidates[0]?.value ?? []).find((path) => {
+        const pages = path.steps.filter((s) => s.kind === "page").map((s) => s.label);
+        return (
+          pages.length === want.pages.length &&
+          pages.every((p, i) => p === want.pages[i]) &&
+          (want.end === undefined || path.end === want.end)
+        );
+      });
+      finalize(
+        "journeys",
+        id,
+        result.status === "ok" && found !== undefined,
+        expected.expectedFail,
+        result.status !== "ok"
+          ? `journeys(${expected.start}) returned ${result.status}`
+          : found === undefined
+            ? `no path visiting [${want.pages.join(" → ")}]${want.end !== undefined ? ` ending ${want.end}` : ""}`
+            : undefined,
+      );
+    }
   }
 
   for (const query of golden.expect.queries ?? []) {
