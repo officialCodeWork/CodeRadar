@@ -27,7 +27,7 @@ program
   .description(
     "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it.",
   )
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("scan")
