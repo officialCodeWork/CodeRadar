@@ -221,6 +221,18 @@ export function traceLineage(graph: LineageGraph, id: string): QueryResult<Linea
           break;
         case "state":
           lineage.state.push(node);
+          // Temporal decoupling (C6): the API that POPULATED this state may
+          // have been called by a different component on a different page.
+          // writes-state edges point data-source → state; follow them back.
+          for (const writer of graph.edges) {
+            if (writer.kind !== "writes-state" || writer.to !== node.id) continue;
+            edgesWalked += 1;
+            const source = byId.get(writer.from);
+            if (source !== undefined && source.kind === "data-source" && !seen.has(source.id)) {
+              seen.add(source.id);
+              lineage.dataSources.push(source);
+            }
+          }
           break;
         case "event":
           lineage.events.push(node);

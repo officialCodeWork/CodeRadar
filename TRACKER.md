@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 2 — Instance graph & cross-file data flow
-- **Next step:** 2.4 — Store adapter: writers ↔ readers
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.3
+- **Next step:** 2.5 — Portals, modals, toasts
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.4
 - **Gates passed:** Gate 0 (CI + red-path, PRs #5/#6) · Gate 1 (precision 1.000 ≥ 0.90, recall 0.895 ≥ 0.80 across C2/C3/C5/A2/A7/A8/D4, zero forbidden hits)
 
 ## What CodeRadar is
@@ -165,7 +165,7 @@ The heart of the project. C1 and B1 live here.
 - Unresolvable after 4 levels → `handler: null, flags: ["unresolved-prop-handler"]` — visible, not silent.
 **Accept:** fixture `b1-prop-drilled-handler` (4 levels) ≥ 0.85 resolution; unresolved cases flagged in graph.
 
-### [ ] 2.4 Store adapter — writers ↔ readers
+### [x] 2.4 Store adapter — writers ↔ readers
 **Failure modes:** C6, B2 (redux/zustand half)
 **Build:**
 - Redux/RTK: slice detection (`createSlice`), `useSelector(s => s.users)` → StateNode per slice path; dispatch sites of thunks/actions that carry API results → `writes-state` edges from the data source to the slice.
