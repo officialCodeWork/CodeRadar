@@ -1,0 +1,15 @@
+{
+  "failureMode": "B7",
+  "note": "Non-JSX events. addEventListener('keydown', onKey) inside a useEffect becomes an event sourced 'effect'; useHotkeys('ctrl+s', fn) becomes an event sourced 'hotkey'. Both handlers are mined for effects (POST /api/save), so the save action is discoverable even though there's no on* JSX prop.",
+  "expect": {
+    "components": [
+      { "name": "ShortcutBar", "instances": 0 },
+      { "name": "SaveHotkey", "instances": 0 }
+    ],
+    "effects": [
+      { "component": "ShortcutBar", "event": "keydown", "effect": "triggers", "to": "/api/save" },
+      { "component": "SaveHotkey", "event": "ctrl+s", "effect": "triggers", "to": "/api/save" }
+    ],
+    "queries": [{ "terms": ["Press S to save"], "status": "ok", "top": "ShortcutBar" }]
+  }
+}

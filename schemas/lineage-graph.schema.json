@@ -480,7 +480,7 @@
         },
         "event": {
           "type": "string",
-          "description": "e.g. \"onClick\", \"onSubmit\", \"onChange\""
+          "description": "e.g. \"onClick\", \"onSubmit\", \"onChange\", or a DOM/hotkey key (\"keydown\", \"ctrl+s\")."
         },
         "handler": {
           "type": [
@@ -488,6 +488,16 @@
             "null"
           ],
           "description": "Name of the handler function, if resolvable."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "jsx",
+            "form",
+            "effect",
+            "hotkey"
+          ],
+          "description": "Where the binding comes from (TRACKER step 3.4): a JSX on* prop (the default when absent), a form-library submit handler (react-hook-form's `handleSubmit`, Formik), an `addEventListener` inside an effect, or a hotkey-library registration (`useHotkeys`)."
         }
       },
       "required": [

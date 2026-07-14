@@ -102,6 +102,16 @@ const TEXT_ATTRIBUTES = new Set([
 ]);
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
 const TOAST_CALLEES = /^(toast(\.\w+)?|enqueueSnackbar|message\.(success|error|info|warning))$/;
+/** Hotkey-library hooks whose (keys, handler) registration becomes an event (3.4). */
+const HOTKEY_HOOKS = new Set([
+  "useHotkeys",
+  "useHotkey",
+  "useKeyboardShortcut",
+  "useKey",
+  "useKeyPress",
+]);
+/** Form components whose `onSubmit` prop is a real submit handler (Formik, 3.4). */
+const FORM_TAGS = new Set(["Formik", "Form"]);
 
 /** Scan a directory of React source and produce a lineage graph. */
 export function scanReact(options: ScanOptions): LineageGraph {
@@ -428,8 +438,62 @@ function extractBodyFacts(
   // sites get the real, substituted endpoint instead.
   const declIsWrapper = wrappers.has(declName);
 
+  // Create an EventNode + handles edge and queue its handler for effect mining.
+  // Shared by JSX on* props and the non-JSX bindings (forms, listeners, hotkeys).
+  const registerEvent = (
+    eventName: string,
+    handlerNode: Node | undefined,
+    source: "jsx" | "form" | "effect" | "hotkey",
+    at: Node,
+    flags?: string[],
+  ): void => {
+    let handler: string | null = null;
+    if (
+      handlerNode !== undefined &&
+      (Node.isIdentifier(handlerNode) || Node.isPropertyAccessExpression(handlerNode))
+    ) {
+      handler = handlerNode.getText();
+    }
+    const suffix = `${handler !== null ? `:${handler}` : ""}${source !== "jsx" ? `@${source}` : ""}`;
+    const evId = nodeId("event", file, `${declName}.${eventName}${suffix}`);
+    if (!nodes.has(evId)) {
+      nodes.set(evId, {
+        id: evId,
+        kind: "event",
+        name: eventName,
+        loc: locOf(at, file),
+        event: eventName,
+        handler,
+        ...(source !== "jsx" ? { source } : {}),
+        ...(flags !== undefined && flags.length > 0 ? { flags } : {}),
+      });
+    }
+    if (handlerNode !== undefined) {
+      const list = handlerExprs.get(evId);
+      if (list) list.push(handlerNode);
+      else handlerExprs.set(evId, [handlerNode]);
+    }
+    addEdge({ from: ownerId, to: evId, kind: "handles" });
+  };
+
   for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = call.getExpression().getText();
+
+    // Non-JSX event bindings (TRACKER 3.4): addEventListener (usually in an
+    // effect) and hotkey-library registrations become events; an unresolvable
+    // event type is flagged "unscanned-events" rather than dropped.
+    if (callee === "addEventListener" || callee.endsWith(".addEventListener")) {
+      const args = call.getArguments();
+      const type = resolveStringValue(args[0], 0);
+      registerEvent(type ?? "unknown", args[1], "effect", call, type === null ? ["unscanned-events"] : undefined);
+      continue;
+    }
+    if (HOTKEY_HOOKS.has(callee)) {
+      const args = call.getArguments();
+      const keys = resolveStringValue(args[0], 0);
+      registerEvent(keys ?? "unknown", args[1], "hotkey", call, keys === null ? ["unscanned-events"] : undefined);
+      continue;
+    }
 
     // Store readers/dispatchers first — useSelector would otherwise fall
     // through to the generic per-component state handling.
@@ -502,39 +566,39 @@ function extractBodyFacts(
     const attrName = attr.getNameNode().getText();
     if (!/^on[A-Z]/.test(attrName)) continue;
     const init = attr.getInitializer();
-    let handler: string | null = null;
-    let handlerExpr: Node | undefined;
-    if (init !== undefined && Node.isJsxExpression(init)) {
-      const expr = init.getExpression();
-      handlerExpr = expr;
-      // Plain references (handleDelete) and method references (this.refresh).
-      if (
-        expr !== undefined &&
-        (Node.isIdentifier(expr) || Node.isPropertyAccessExpression(expr))
-      ) {
-        handler = expr.getText();
+    if (init === undefined || !Node.isJsxExpression(init)) {
+      registerEvent(attrName, undefined, "jsx", attr);
+      continue;
+    }
+    let expr: Node | undefined = init.getExpression();
+    let source: "jsx" | "form" = "jsx";
+    // react-hook-form: onSubmit={handleSubmit(onValid)} — the real handler is
+    // the wrapped argument, not the handleSubmit() call itself.
+    if (expr !== undefined && Node.isCallExpression(expr)) {
+      const callee = expr.getExpression();
+      const calleeName = Node.isPropertyAccessExpression(callee) ? callee.getName() : callee.getText();
+      if (calleeName === "handleSubmit") {
+        expr = expr.getArguments()[0] ?? expr;
+        source = "form";
       }
     }
-    const evId = nodeId("event", file, `${declName}.${attrName}${handler !== null ? `:${handler}` : ""}`);
-    if (!nodes.has(evId)) {
-      nodes.set(evId, {
-        id: evId,
-        kind: "event",
-        name: attrName,
-        loc: locOf(attr, file),
-        event: attrName,
-        handler,
-      });
+    // Formik: <Formik onSubmit={onSubmit}> — the onSubmit prop is a submit handler.
+    if (source === "jsx" && attrName === "onSubmit" && FORM_TAGS.has(jsxTagName(attr))) {
+      source = "form";
     }
-    // The handler expression is mined for effects in resolveHandlerChains (3.2);
-    // stored by node id so the same evId collects every inline arrow it carries.
-    if (handlerExpr !== undefined) {
-      const list = handlerExprs.get(evId);
-      if (list) list.push(handlerExpr);
-      else handlerExprs.set(evId, [handlerExpr]);
-    }
-    addEdge({ from: ownerId, to: evId, kind: "handles" });
+    registerEvent(attrName, expr, source, attr);
   }
+}
+
+/** The tag name of the JSX element an attribute belongs to (e.g. "Formik"). */
+function jsxTagName(attr: Node): string {
+  const element = attr.getFirstAncestor(
+    (a) => Node.isJsxOpeningElement(a) || Node.isJsxSelfClosingElement(a),
+  );
+  if (element !== undefined && (Node.isJsxOpeningElement(element) || Node.isJsxSelfClosingElement(element))) {
+    return element.getTagNameNode().getText();
+  }
+  return "";
 }
 
 /** `useSelector((s) => s.users.list)` → the "users" slice's StateNode id. */
