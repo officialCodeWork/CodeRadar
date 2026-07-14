@@ -608,6 +608,7 @@
         "writes-state",
         "handles",
         "triggers",
+        "navigates-to",
         "routes-to"
       ]
     },

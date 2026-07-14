@@ -219,9 +219,10 @@ export type EdgeKind =
   | "fetches-from" // component | hook -> data-source
   | "provides-data" // data-source -> instance (via a prop; Phase 2.2)
   | "reads-state" // component | hook -> state
-  | "writes-state" // data-source | event -> state (Phase 2.4)
+  | "writes-state" // data-source | event -> state (Phase 2.4; dispatch effects Phase 3.2)
   | "handles" // component -> event
-  | "triggers" // event -> data-source | state (handler causes a fetch / state write)
+  | "triggers" // event -> data-source (resolved handler body issues a fetch; Phase 3.2)
+  | "navigates-to" // event -> route (handler calls navigate/router.push; Phase 3.2, B3)
   | "routes-to"; // route -> page component definition (its instances form the page tree)
 
 /** A statically-detected condition guarding an edge (feature flag, role, branch). */

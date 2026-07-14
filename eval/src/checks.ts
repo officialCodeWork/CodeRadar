@@ -128,6 +128,43 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
     });
   }
 
+  for (const expected of golden.expect.effects ?? []) {
+    const id = `effect:${expected.component}.${expected.event}:${expected.effect}->${expected.to}`;
+    const owner = graph.nodes.find(
+      (n) => n.kind === "component" && n.name === expected.component,
+    );
+    // Events the component handles, filtered to the named event (onClick, …).
+    const eventIds = new Set(
+      graph.edges
+        .filter((e) => e.kind === "handles" && owner !== undefined && e.from === owner.id)
+        .map((e) => e.to)
+        .filter((eventId) => {
+          const event = graph.nodes.find((n) => n.id === eventId);
+          return event?.kind === "event" && event.event === expected.event;
+        }),
+    );
+    const matched = graph.edges.some((edge) => {
+      if (edge.kind !== expected.effect || !eventIds.has(edge.from)) return false;
+      const target = graph.nodes.find((n) => n.id === edge.to);
+      if (target === undefined) return false;
+      if (target.kind === "route") return target.path === expected.to;
+      if (target.kind === "data-source") return target.endpoint === expected.to;
+      if (target.kind === "state") return target.name === expected.to;
+      return false;
+    });
+    finalize(
+      "effects",
+      id,
+      matched,
+      expected.expectedFail,
+      matched
+        ? undefined
+        : owner === undefined
+          ? "component not found"
+          : `no ${expected.effect} edge from a ${expected.component}.${expected.event} event to ${expected.to}`,
+    );
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+")}`;
     const result = matchComponentsByText(graph, query.terms);
