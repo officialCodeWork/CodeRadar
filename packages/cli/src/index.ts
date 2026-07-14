@@ -20,9 +20,9 @@ import { Command } from "commander";
 const program = new Command();
 
 program
-  .name("coderadar")
+  .name("ui-lineage")
   .description(
-    "Map UI components to their data sources — trace any screenshot back to the code and data behind it.",
+    "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it.",
   )
   .version("0.1.0");
 
@@ -30,7 +30,7 @@ program
   .command("scan")
   .description("Scan a React codebase and emit a lineage graph JSON")
   .argument("<dir>", "directory to scan")
-  .option("-o, --out <file>", "output file", "coderadar.graph.json")
+  .option("-o, --out <file>", "output file", "ui-lineage.graph.json")
   .action((dir: string, opts: { out: string }) => {
     const meta = collectGraphMeta(path.resolve(dir));
     const graph = { ...resolveHookEdges(scanReact({ root: dir })), meta };
@@ -56,7 +56,7 @@ program
   .command("find")
   .description("Find components by text visible on screen (e.g. read off a screenshot)")
   .argument("<terms...>", "text fragments seen in the UI")
-  .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
   .action((terms: string[], opts: { graph: string }) => {
     const graph = loadGraph(opts.graph);
     const result = matchComponentsByText(graph, terms);
@@ -76,7 +76,7 @@ program
   .command("trace")
   .description("Trace a component to every data source, state, and event that feeds it")
   .argument("<component>", "component name, definition id, or instance id")
-  .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
   .action((component: string, opts: { graph: string }) => {
     const graph = loadGraph(opts.graph);
     const node =
@@ -127,7 +127,7 @@ program
   .command("journeys")
   .description("Trace user-journey paths from a page or component (click → navigate → click…)")
   .argument("<start>", "route path (/users/:id), component name, or instance id")
-  .option("-g, --graph <file>", "graph file", "coderadar.graph.json")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
   .option("-d, --depth <n>", "max navigation levels per path", "3")
   .action((start: string, opts: { graph: string; depth: string }) => {
     const graph = loadGraph(opts.graph);
@@ -181,7 +181,7 @@ function printMatchCandidate(candidate: Candidate<ComponentMatch>): void {
 
 function loadGraph(file: string): LineageGraph {
   if (!fs.existsSync(file)) {
-    console.error(`Graph file not found: ${file} — run \`coderadar scan <dir>\` first.`);
+    console.error(`Graph file not found: ${file} — run \`ui-lineage scan <dir>\` first.`);
     process.exit(1);
   }
   try {

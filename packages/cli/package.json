@@ -1,26 +1,54 @@
 {
-  "name": "@coderadar/cli",
+  "name": "ui-lineage",
   "version": "0.1.0",
-  "description": "CodeRadar CLI — scan a React codebase into a lineage graph and query it.",
+  "description": "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it. Deterministic static analysis for React/TSX.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "coderadar": "dist/index.js"
+    "ui-lineage": "dist/index.js"
+  },
+  "main": "dist/lib.js",
+  "module": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
+    }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
+  "keywords": [
+    "react",
+    "static-analysis",
+    "data-lineage",
+    "data-flow",
+    "ast",
+    "ts-morph",
+    "user-journeys",
+    "component-graph",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@coderadar/core": "workspace:*",
-    "@coderadar/parser-react": "workspace:*",
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "ts-morph": "^24.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@coderadar/core": "workspace:*",
+    "@coderadar/parser-react": "workspace:*",
     "@types/node": "^22.20.1",
+    "tsup": "^8.5.1",
     "typescript": "^5.7.0"
   }
 }
