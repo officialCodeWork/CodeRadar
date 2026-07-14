@@ -100,6 +100,21 @@ program
     if (lineage.via.length > 0) {
       console.log(`  via: ${lineage.via.map((v) => v.name).join(", ")}`);
     }
+    if (lineage.perInstance !== undefined && lineage.perInstance.length > 0) {
+      console.log("  per instance:");
+      for (const inst of lineage.perInstance) {
+        console.log(
+          `    ${lineage.component.name}@${inst.parent.name}  (${inst.parent.loc.file}:${inst.parent.loc.line})`,
+        );
+        if (inst.dataSources.length === 0) {
+          console.log("      (no distinct data sources)");
+          continue;
+        }
+        for (const ds of inst.dataSources) {
+          console.log(`      → ${ds.method ?? "?"} ${ds.endpoint}  (${ds.loc.file}:${ds.loc.line})`);
+        }
+      }
+    }
   });
 
 function loadGraph(file: string): LineageGraph {
