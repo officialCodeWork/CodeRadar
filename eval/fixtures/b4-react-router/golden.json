@@ -1,0 +1,27 @@
+{
+  "failureMode": "B4",
+  "note": "React Router adapter: createBrowserRouter object trees (nested children, index route, pathless guard route, inline guard wrapper, lazy route module) plus a JSX <Routes>/<Route> tree. Every golden route must map to its page component with the right layout and guards.",
+  "expect": {
+    "routes": [
+      { "path": "/", "component": "HomePage", "layout": "RootLayout", "guards": [] },
+      { "path": "/users", "component": "UsersPage", "layout": "RootLayout", "guards": [] },
+      { "path": "/users/:userId", "component": "UserDetail", "layout": "RootLayout", "guards": [] },
+      { "path": "/admin", "component": "AdminPanel", "layout": "RootLayout", "guards": ["RequireAuth"] },
+      { "path": "/audit", "component": "AuditLog", "layout": "RootLayout", "guards": ["RequireAuth"] },
+      { "path": "/settings", "component": "SettingsPage", "layout": "RootLayout", "guards": [] },
+      { "path": "/reports", "component": "ReportsHome", "layout": "ReportsLayout", "guards": [] },
+      { "path": "/reports/:reportId", "component": "ReportDetail", "layout": "ReportsLayout", "guards": [] }
+    ],
+    "components": [
+      { "name": "UsersPage", "instances": 0 },
+      { "name": "ReportsHome", "instances": 1 }
+    ],
+    "attributions": [
+      { "component": "UsersPage", "endpoints": ["/api/users"] }
+    ],
+    "queries": [
+      { "terms": ["All users"], "status": "ok", "top": "UsersPage" },
+      { "terms": ["Workspace settings"], "status": "ok", "top": "SettingsPage" }
+    ]
+  }
+}

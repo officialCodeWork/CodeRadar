@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 3 — Journey graph
-- **Next step:** 3.1 — Router adapters
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5
+- **Next step:** 3.2 — Action effects
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000)
 
 ## What CodeRadar is
@@ -182,7 +182,7 @@ The heart of the project. C1 and B1 live here.
 
 ## Phase 3 — Journey graph
 
-### [ ] 3.1 Router adapters
+### [x] 3.1 Router adapters
 **Failure modes:** B4
 **Build:** `RouteNode` (`path`, `layout`, `guards`) in core. Adapters: React Router (`createBrowserRouter` / `<Route>` trees, nested + lazy) and Next.js file-based (app + pages router). `routes-to` edges route → page-component instance tree.
 **Accept:** fixtures `b4-react-router`, `b4-nextjs-approuter` green: every golden route maps to its page component.

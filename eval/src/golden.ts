@@ -41,6 +41,18 @@ export interface GoldenQuery {
   expectedFail?: string;
 }
 
+export interface GoldenRoute {
+  /** Route pattern in :param form, e.g. "/users/:id". */
+  path: string;
+  /** Component name the route's routes-to edge must land on. */
+  component: string;
+  /** When set, the RouteNode's layout must equal this exactly (null = bare). */
+  layout?: string | null;
+  /** When set, the RouteNode's guards must equal this exactly. */
+  guards?: string[];
+  expectedFail?: string;
+}
+
 export interface Golden {
   failureMode: string;
   note?: string;
@@ -57,6 +69,9 @@ export interface Golden {
     attributions?: GoldenAttribution[];
     forbidden?: GoldenForbidden[];
     queries?: GoldenQuery[];
+    routes?: GoldenRoute[];
+    /** Paths that must NOT exist as routes (api handlers, _app…). Never xfails. */
+    forbiddenRoutes?: string[];
   };
 }
 
@@ -65,7 +80,7 @@ export type CheckStatus = "pass" | "fail" | "xfail" | "unexpected-pass";
 export interface CheckResult {
   /** e.g. "components:DataTable", "attribution:DataTable@pages/UsersPage.tsx" */
   id: string;
-  kind: "components" | "attributions" | "forbidden" | "queries";
+  kind: "components" | "attributions" | "forbidden" | "queries" | "routes";
   status: CheckStatus;
   detail?: string;
 }

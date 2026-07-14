@@ -94,6 +94,40 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
     if (poisoned) attribution.falsePositives += 1;
   }
 
+  for (const expected of golden.expect.routes ?? []) {
+    const id = `route:${expected.path}`;
+    const route = graph.nodes.find((n) => n.kind === "route" && n.path === expected.path);
+    if (route === undefined || route.kind !== "route") {
+      finalize("routes", id, false, expected.expectedFail, "route not found in graph");
+      continue;
+    }
+    const pageEdge = graph.edges.find((e) => e.kind === "routes-to" && e.from === route.id);
+    const page = pageEdge !== undefined ? graph.nodes.find((n) => n.id === pageEdge.to) : undefined;
+    let detail: string | undefined;
+    if (page?.name !== expected.component) {
+      detail = `expected page ${expected.component}, got ${page?.name ?? "none"}`;
+    } else if (expected.layout !== undefined && route.layout !== expected.layout) {
+      detail = `expected layout ${expected.layout ?? "null"}, got ${route.layout ?? "null"}`;
+    } else if (
+      expected.guards !== undefined &&
+      JSON.stringify(route.guards) !== JSON.stringify(expected.guards)
+    ) {
+      detail = `expected guards [${expected.guards.join(", ")}], got [${route.guards.join(", ")}]`;
+    }
+    finalize("routes", id, detail === undefined, expected.expectedFail, detail);
+  }
+
+  for (const forbiddenPath of golden.expect.forbiddenRoutes ?? []) {
+    const present = graph.nodes.some((n) => n.kind === "route" && n.path === forbiddenPath);
+    // Like forbidden attributions, forbidden routes never xfail.
+    checks.push({
+      id: `route!${forbiddenPath}`,
+      kind: "routes",
+      status: present ? "fail" : "pass",
+      detail: present ? "POISON: forbidden route present in graph" : undefined,
+    });
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+")}`;
     const result = matchComponentsByText(graph, query.terms);

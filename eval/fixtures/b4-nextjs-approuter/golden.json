@@ -1,0 +1,22 @@
+{
+  "failureMode": "B4",
+  "note": "Next.js file-based routing: app router ([param] and [...catchAll] segments, (group) dirs dropped, nearest layout.tsx wins) plus a pages-router leftover. _app and pages/api/** must never become routes.",
+  "expect": {
+    "routes": [
+      { "path": "/", "component": "HomePage", "layout": "RootLayout", "guards": [] },
+      { "path": "/dashboard", "component": "DashboardPage", "layout": "DashboardLayout", "guards": [] },
+      { "path": "/pricing", "component": "PricingPage", "layout": "RootLayout", "guards": [] },
+      { "path": "/users/:userId", "component": "UserProfilePage", "layout": "RootLayout", "guards": [] },
+      { "path": "/docs/:slug*", "component": "DocsPage", "layout": "RootLayout", "guards": [] },
+      { "path": "/legacy/:id", "component": "LegacyDetailPage", "guards": [] }
+    ],
+    "forbiddenRoutes": ["/api/health", "/_app"],
+    "attributions": [
+      { "component": "DashboardPage", "endpoints": ["/api/metrics"] }
+    ],
+    "queries": [
+      { "terms": ["Key metrics"], "status": "ok", "top": "DashboardPage" },
+      { "terms": ["transparent pricing"], "status": "ok", "top": "PricingPage" }
+    ]
+  }
+}
