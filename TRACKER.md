@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 3 — Journey graph
-- **Next step:** 3.3 — Journey query (lazy expansion)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.2
+- **Next step:** 3.4 — Form libraries & non-JSX events
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.3
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000)
 
 ## What CodeRadar is
@@ -196,7 +196,7 @@ The heart of the project. C1 and B1 live here.
 - `setState`/setters → `writes-state` on local state
 **Accept:** fixture `b3-programmatic-nav` green; every effect kind covered by a unit test.
 
-### [ ] 3.3 Journey query — lazy expansion
+### [x] 3.3 Journey query — lazy expansion
 **Failure modes:** B5, B6
 **Build:** `journeys(graph, startInstanceId | routePath, { depth })` in core:
 - BFS over event → effect → route → page-instance → its events…, expanding paths **at query time**; per-path visited-set for cycle handling (a node may repeat across paths, not within one); cap + `truncated` flag.
