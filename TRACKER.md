@@ -4,10 +4,10 @@
 
 ## Status
 
-- **Current phase:** 2 — Instance graph & cross-file data flow
-- **Next step:** 2.5 — Portals, modals, toasts
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.4
-- **Gates passed:** Gate 0 (CI + red-path, PRs #5/#6) · Gate 1 (precision 1.000 ≥ 0.90, recall 0.895 ≥ 0.80 across C2/C3/C5/A2/A7/A8/D4, zero forbidden hits)
+- **Current phase:** 3 — Journey graph
+- **Next step:** 3.1 — Router adapters
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5
+- **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000)
 
 ## What CodeRadar is
 
@@ -173,7 +173,7 @@ The heart of the project. C1 and B1 live here.
 - `traceLineage` through a StateNode now continues to its writers: reader component → slice → populating API.
 **Accept:** fixture `c6-store-decoupled` green — component with **no fetch of its own** correctly attributed to the API called on a different page at login.
 
-### [ ] 2.5 Portals, modals, toasts
+### [x] 2.5 Portals, modals, toasts
 **Failure modes:** A9
 **Build:** `createPortal` detection + adapter list for common modal/toast libs (`react-modal`, radix `Dialog`, `react-hot-toast`): the triggering instance gets a `triggers-render` edge to the portal-content instance.
 **Accept:** fixture `a9-modal-portal` green: matching the modal's text surfaces both the modal component and its trigger site. **Gate 2 passes.**

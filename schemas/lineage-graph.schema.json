@@ -191,9 +191,10 @@
           "enum": [
             "jsx",
             "attribute",
-            "i18n"
+            "i18n",
+            "portal"
           ],
-          "description": "Where the text comes from: JSX children, a string attribute (placeholder/label/title/alt/aria-label), or an i18n key resolved against locale files."
+          "description": "Where the text comes from: JSX children, a string attribute (placeholder/label/title/alt/aria-label), an i18n key resolved against locale files, or portal-rendered content (toast(\"Order deleted\") — the text appears far from the caller in the DOM, but the CALLER is the component a screenshot of it should match)."
         },
         "key": {
           "type": "string",

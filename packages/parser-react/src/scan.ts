@@ -100,6 +100,7 @@ const TEXT_ATTRIBUTES = new Set([
   "value",
 ]);
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
+const TOAST_CALLEES = /^(toast(\.\w+)?|enqueueSnackbar|message\.(success|error|info|warning))$/;
 
 /** Scan a directory of React source and produce a lineage graph. */
 export function scanReact(options: ScanOptions): LineageGraph {
@@ -144,6 +145,12 @@ export function scanReact(options: ScanOptions): LineageGraph {
       const id = nodeId(kind, file, decl.name);
 
       if (isComponent) {
+        // Portal components (A9): rendered into document.body etc., far from
+        // where they're triggered — flagged so agents know the screenshot's
+        // DOM position won't match the render-tree position.
+        const usesPortal = decl.fn
+          .getDescendantsOfKind(SyntaxKind.CallExpression)
+          .some((c) => /^(ReactDOM\.)?createPortal$/.test(c.getExpression().getText()));
         nodes.set(id, {
           id,
           kind: "component",
@@ -156,6 +163,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
             ...(localeTable !== null ? i18nRenderedText(decl.fn, localeTable) : []),
           ],
           rendersComponents: extractRenderedComponents(decl.fn),
+          ...(usesPortal ? { flags: ["portal"] } : {}),
         });
         collectInstanceSites(decl.fn, id, file, pendingInstances);
       } else {
@@ -289,6 +297,17 @@ function extractRenderedText(fn: Node): RenderedText[] {
     if (init !== undefined && Node.isStringLiteral(init)) {
       const text = init.getLiteralValue().trim();
       if (text.length > 0) add({ text, source: "attribute", ...branchTag(attr, fn) });
+    }
+  }
+
+  // Toast/notification calls (A9): toast("Order deleted") renders via a portal
+  // mounted elsewhere — the text belongs to the CALLING component for matching.
+  for (const call of fn.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    if (!TOAST_CALLEES.test(call.getExpression().getText())) continue;
+    const arg = call.getArguments()[0];
+    if (arg !== undefined && Node.isStringLiteral(arg)) {
+      const text = arg.getLiteralValue().trim();
+      if (text.length > 0) add({ text, source: "portal", ...branchTag(call, fn) });
     }
   }
 
@@ -1213,6 +1232,10 @@ function resolvePropFlow(
 
       const init = varDecl.getInitializer();
       if (init !== undefined) {
+        // Function values are callbacks, not data: the fetch inside
+        // onConfirm={handleConfirm} is an EFFECT the child can trigger
+        // (handler chains, step 2.3), never data flowing into it.
+        if (Node.isArrowFunction(init) || Node.isFunctionExpression(init)) continue;
         // Direct result: const { data } = useQuery(...) / const r = useApi("/x")
         // — including calls wrapped in await / as-casts.
         fromCall(init);
@@ -1264,6 +1287,8 @@ function resolvePropFlow(
     if (instanceId === null || instanceId === undefined) continue;
     for (const attr of pending.element.getAttributes()) {
       if (!Node.isJsxAttribute(attr)) continue;
+      // Event-handler props (onConfirm, onClick…) carry effects, not data.
+      if (/^on[A-Z]/.test(attr.getNameNode().getText())) continue;
       const init = attr.getInitializer();
       if (init === undefined || !Node.isJsxExpression(init)) continue;
       const expr = init.getExpression();
