@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 4 — Matching engine
-- **Next step:** 4.4 — Screenshot adapter (@coderadar/vision)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1–4.3
+- **Next step:** 4.5 — Confidence calibration & ambiguity protocol
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1–4.4
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000)
 
 ## What CodeRadar is
@@ -236,7 +236,7 @@ The heart of the project. C1 and B1 live here.
 **Build:** when matches nest (Page > Section > Card all match), return the deepest instance covering the matched term/structure set; ancestors listed as `context`, not competing candidates.
 **Accept:** fixture `a6-composed-page` green: full-page term set → page node; card-specific terms → card instance with page as context.
 
-### [ ] 4.4 Screenshot adapter
+### [x] 4.4 Screenshot adapter
 **Failure modes:** A10, E3, A13
 **Build:** `@coderadar/vision` package:
 - `VisionAdapter` interface: `extract(image) → { terms: string[], structure: StructureDescriptor, annotations: Region[] }`. Ships with a Claude-vision implementation; OCR-only fallback stub for tests.
