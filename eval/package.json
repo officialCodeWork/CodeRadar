@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@coderadar/core": "workspace:*",
-    "@coderadar/parser-react": "workspace:*"
+    "@coderadar/parser-react": "workspace:*",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

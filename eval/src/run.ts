@@ -15,9 +15,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
+import { parse as parseYaml } from "yaml";
 
 import { runChecks } from "./checks.js";
 import type { FixtureResult, Golden, Scorecard, Thresholds } from "./golden.js";
+
+/** A fixture's business-vocabulary glossary (aliases.yaml), phrase → component. */
+function loadAliases(fixtureDir: string): Record<string, string> | undefined {
+  const aliasPath = path.join(fixtureDir, "aliases.yaml");
+  if (!fs.existsSync(aliasPath)) return undefined;
+  return parseYaml(fs.readFileSync(aliasPath, "utf-8")) as Record<string, string>;
+}
 
 const evalDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixturesDir = path.join(evalDir, "fixtures");
@@ -41,7 +49,7 @@ function main(): void {
     const golden = JSON.parse(fs.readFileSync(goldenPath, "utf-8")) as Golden;
     const appDir = path.resolve(fixtureDir, golden.app ?? "./app");
     const graph = resolveHookEdges(scanReact({ root: appDir, ...(golden.scan ?? {}) }));
-    results.push(runChecks(name, golden, graph));
+    results.push(runChecks(name, golden, graph, loadAliases(fixtureDir)));
   }
 
   const scorecard = buildScorecard(results);

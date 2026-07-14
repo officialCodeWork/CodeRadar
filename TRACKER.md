@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 4 — Matching engine
-- **Next step:** 4.5 — Confidence calibration & ambiguity protocol
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1–4.4
+- **Next step:** 4.5 — Confidence calibration & ambiguity protocol (last step for Gate 4)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1–4.4, 4.6 (4.5 deferred — Gate 4 pending it)
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000)
 
 ## What CodeRadar is
@@ -253,7 +253,7 @@ The heart of the project. C1 and B1 live here.
 - `declined` results carry a machine-readable reason (`out-of-scope`, `not-our-app`, `no-signal`).
 **Accept:** poison rate ≤ 0.05 and ambiguity honesty ≥ 0.90 on the full matching eval set; every `high`-confidence answer in the eval set is correct.
 
-### [ ] 4.6 Alias glossary & corrections store
+### [x] 4.6 Alias glossary & corrections store
 **Failure modes:** E2, G4
 **Build:** `aliases.yaml` (checked into the *target* repo): `"invoice widget" → BillingSummaryCard`, route titles, feature names. Corrections API: `recordCorrection(terms, confirmedInstanceId)` appends to `corrections.jsonl`; both feed the matcher as first-class evidence (`kind: "alias" | "correction"`, high weight). Eval subcommand folds corrections into new ticket-eval cases.
 **Accept:** fixture `e2-business-vocab` green via alias; a recorded correction changes the next identical query's top-1 (integration test). **Gate 4 passes.**

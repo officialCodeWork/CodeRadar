@@ -16,6 +16,9 @@ importers:
       '@coderadar/parser-react':
         specifier: workspace:*
         version: link:../packages/parser-react
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

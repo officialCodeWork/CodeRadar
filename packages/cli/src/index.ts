@@ -9,13 +9,16 @@ import {
   type JourneyPath,
   journeys,
   type LineageGraph,
+  loadCorrections,
   loadGraph as loadGraphFile,
-  matchComponentsByText,
+  matchComponents,
+  recordCorrection,
   saveGraph,
   traceLineage,
 } from "@coderadar/core";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { Command } from "commander";
+import { parse as parseYaml } from "yaml";
 
 const program = new Command();
 
@@ -57,9 +60,22 @@ program
   .description("Find components by text visible on screen (e.g. read off a screenshot)")
   .argument("<terms...>", "text fragments seen in the UI")
   .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
-  .action((terms: string[], opts: { graph: string }) => {
+  .option("-a, --aliases <file>", "business-vocab glossary (aliases.yaml)")
+  .option("-c, --corrections <file>", "corrections store (jsonl)", "ui-lineage.corrections.jsonl")
+  .action((terms: string[], opts: { graph: string; aliases?: string; corrections: string }) => {
     const graph = loadGraph(opts.graph);
-    const result = matchComponentsByText(graph, terms);
+    const aliases =
+      opts.aliases !== undefined && fs.existsSync(opts.aliases)
+        ? (parseYaml(fs.readFileSync(opts.aliases, "utf-8")) as Record<string, string>)
+        : undefined;
+    const corrections = fs.existsSync(opts.corrections)
+      ? loadCorrections(opts.corrections)
+      : undefined;
+    const result = matchComponents(graph, {
+      terms,
+      ...(aliases !== undefined ? { aliases } : {}),
+      ...(corrections !== undefined ? { corrections } : {}),
+    });
     if (result.status === "declined") {
       console.log(`No components matched (${result.declineReason}).`);
       return;
@@ -160,6 +176,17 @@ program
     }
     console.log(`${paths.length} journey path(s) from ${start}:\n`);
     for (const path of paths) printJourneyPath(path);
+  });
+
+program
+  .command("correct")
+  .description("Record that some on-screen text means a component — feeds future `find` results")
+  .argument("<component>", "component name it should resolve to")
+  .argument("<terms...>", "the text fragments that mean it")
+  .option("-c, --corrections <file>", "corrections store (jsonl)", "ui-lineage.corrections.jsonl")
+  .action((component: string, terms: string[], opts: { corrections: string }) => {
+    recordCorrection(opts.corrections, { terms, component });
+    console.log(`Recorded: [${terms.join(", ")}] → ${component}  (${opts.corrections})`);
   });
 
 const STEP_ARROW: Record<string, string> = {
