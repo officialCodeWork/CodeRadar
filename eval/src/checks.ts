@@ -192,6 +192,30 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
     }
   }
 
+  for (const expected of golden.expect.conditions ?? []) {
+    const id = `condition:${expected.component}.${expected.edge}:${expected.kind}~${expected.expression}`;
+    const owner = graph.nodes.find((n) => n.kind === "component" && n.name === expected.component);
+    const matched = graph.edges.some(
+      (e) =>
+        e.kind === expected.edge &&
+        owner !== undefined &&
+        e.from === owner.id &&
+        e.condition?.kind === expected.kind &&
+        e.condition.expression.includes(expected.expression),
+    );
+    finalize(
+      "conditions",
+      id,
+      matched,
+      expected.expectedFail,
+      matched
+        ? undefined
+        : owner === undefined
+          ? "component not found"
+          : `no ${expected.edge} edge from ${expected.component} with a ${expected.kind} condition containing "${expected.expression}"`,
+    );
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+")}`;
     const result = matchComponentsByText(graph, query.terms);

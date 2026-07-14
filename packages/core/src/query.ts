@@ -316,10 +316,12 @@ export function journeys(
   const maxPaths = options.maxPaths ?? 256;
   const byId = new Map<string, LineageNode>(graph.nodes.map((n) => [n.id, n]));
   const out = new Map<string, LineageEdge[]>();
+  const handlesConditionByEvent = new Map<string, EdgeCondition>();
   for (const e of graph.edges) {
     const list = out.get(e.from);
     if (list) list.push(e);
     else out.set(e.from, [e]);
+    if (e.kind === "handles" && e.condition !== undefined) handlesConditionByEvent.set(e.to, e.condition);
   }
   const outEdges = (id: string): LineageEdge[] => out.get(id) ?? [];
 
@@ -422,13 +424,17 @@ export function journeys(
     for (const eventId of screenEvents(componentId)) {
       const event = byId.get(eventId);
       if (event === undefined || event.kind !== "event") continue;
+      // A flag/role guard on the handles edge (3.5) gates the whole step; an
+      // effect-edge condition (rarer) refines the specific effect.
+      const gate = handlesConditionByEvent.get(eventId);
       for (const effect of outEdges(eventId)) {
+        const stepCondition = effect.condition ?? gate;
         const eventStep: JourneyStep = {
           kind: "event",
           nodeId: eventId,
           label: event.event,
           loc: event.loc,
-          ...(effect.condition ? { condition: effect.condition } : {}),
+          ...(stepCondition ? { condition: stepCondition } : {}),
         };
         if (effect.kind === "navigates-to") {
           const page = pageOfRoute(effect.to);
@@ -439,7 +445,7 @@ export function journeys(
             nodeId: effect.to,
             label: byId.get(effect.to)?.name ?? effect.to,
             ...(byId.get(effect.to) ? { loc: byId.get(effect.to)!.loc } : {}),
-            ...(effect.condition ? { condition: effect.condition } : {}),
+            ...(stepCondition ? { condition: stepCondition } : {}),
           };
           expand(page.componentId, page.label, [...pagePath, eventStep, navStep], nextVisited);
         } else if (effect.kind === "triggers" || effect.kind === "writes-state") {
