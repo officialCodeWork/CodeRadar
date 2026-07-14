@@ -67,6 +67,28 @@ export interface RenderedText {
   template?: boolean;
 }
 
+/**
+ * Counts of the structural elements a component renders — the signal for
+ * matching a screenshot with little or no static text (TRACKER step 4.2,
+ * failure modes A1/A3/A12). Raw DOM tags plus common design-system aliases
+ * (`<Table>`, `<TextField>`, …) are folded into these buckets.
+ */
+export interface StructuralSignature {
+  table: number;
+  /** Column headers — the max `<th>` (or design-system column) count in a table. */
+  columns: number;
+  form: number;
+  input: number;
+  button: number;
+  link: number;
+  image: number;
+  heading: number;
+  /** `<ul>`/`<ol>`/`<li>` groupings. */
+  list: number;
+  /** `.map(...)` JSX renders — repeated cards/rows/grid items. */
+  repeated: number;
+}
+
 /** A React component definition — the code, not a usage. */
 export interface ComponentNode extends BaseNode {
   kind: "component";
@@ -82,6 +104,25 @@ export interface ComponentNode extends BaseNode {
   renderedText: RenderedText[];
   /** Names of components this component renders in its JSX (deduplicated). */
   rendersComponents: string[];
+  /** Structural fingerprint of the rendered subtree (Phase 4.2). */
+  structure: StructuralSignature;
+}
+
+/**
+ * A structural query, e.g. from vision output "a table with columns Name,
+ * Email, Actions". Only the specified fields are scored against a signature.
+ */
+export interface StructureDescriptor {
+  table?: boolean;
+  /** Expected column count (matched within ±1). */
+  columns?: number;
+  form?: boolean;
+  inputs?: number;
+  buttons?: number;
+  images?: number;
+  list?: boolean;
+  /** Expected count of repeated items (cards/rows), matched with tolerance. */
+  cards?: number;
 }
 
 /**

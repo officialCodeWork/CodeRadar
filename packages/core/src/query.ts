@@ -29,6 +29,8 @@ import type {
   RouteNode,
   SourceLocation,
   StateNode,
+  StructuralSignature,
+  StructureDescriptor,
 } from "./types.js";
 
 export interface ComponentMatch {
@@ -54,12 +56,36 @@ export interface ComponentMatch {
  * Returns `ambiguous` when the leaders tie on rarity-weighted score (a lone
  * generic term is honestly ambiguous), `declined("no-signal")` on no match.
  */
+/** A screenshot/ticket query: visible text, a structure descriptor, or both. */
+export interface MatchQuery {
+  terms?: string[];
+  structure?: StructureDescriptor;
+}
+
+/** Weight of a full structural match relative to a rare matched term. */
+const STRUCTURE_WEIGHT = 3;
+
+/** Back-compat text-only entry point. */
 export function matchComponentsByText(
   graph: LineageGraph,
   terms: string[],
 ): QueryResult<ComponentMatch> {
-  const queryTerms = terms.map((t) => normalizeText(t)).filter((t) => t.length > 1);
-  if (queryTerms.length === 0) return declined("no-signal");
+  return matchComponents(graph, { terms });
+}
+
+/**
+ * Match components by rendered text (rarity-weighted, fuzzy — step 4.1) and/or
+ * structural shape (step 4.2). Text and structure scores combine into one
+ * ranking, so a dashboard with no static text still matches on "a table with
+ * four columns and a card grid".
+ */
+export function matchComponents(
+  graph: LineageGraph,
+  query: MatchQuery,
+): QueryResult<ComponentMatch> {
+  const queryTerms = (query.terms ?? []).map((t) => normalizeText(t)).filter((t) => t.length > 1);
+  const descriptor = query.structure;
+  if (queryTerms.length === 0 && descriptor === undefined) return declined("no-signal");
 
   const instancesByDefinition = groupInstances(graph);
   const components = graph.nodes.filter((n): n is ComponentNode => n.kind === "component");
@@ -129,16 +155,27 @@ export function matchComponentsByText(
         loc: component.loc,
       });
     }
-    if (matched.length === 0) continue;
-    const combination = 1 + 0.5 * (matched.length - 1);
+    const textScore = matched.length > 0 ? weight * (1 + 0.5 * (matched.length - 1)) : 0;
+
+    const structureFit = descriptor !== undefined ? structureScore(component.structure, descriptor) : 0;
+    if (structureFit > 0) {
+      evidence.push({
+        kind: "structure",
+        detail: `structural shape matched the descriptor (fit ${structureFit.toFixed(2)})`,
+        loc: component.loc,
+      });
+    }
+
+    if (matched.length === 0 && structureFit === 0) continue;
+    const coverage = queryTerms.length > 0 ? matched.length / queryTerms.length : structureFit;
     scored.push({
       match: {
         component,
         instances: instancesByDefinition.get(component.id) ?? [],
         matchedText: matched,
       },
-      score: weight * combination,
-      coverage: matched.length / queryTerms.length,
+      score: textScore + structureFit * STRUCTURE_WEIGHT,
+      coverage: Math.max(coverage, structureFit),
       evidence,
     });
   }
@@ -534,6 +571,25 @@ export function journeys(
     },
   ];
   return ok([{ value: paths, confidence: confidenceFromScore(0.9), evidence }]);
+}
+
+/**
+ * Fraction (0–1) of a structure descriptor's specified expectations that a
+ * component's signature satisfies. Counts and columns match with tolerance so
+ * OCR/vision miscounts still land.
+ */
+function structureScore(sig: StructuralSignature, desc: StructureDescriptor): number {
+  const checks: boolean[] = [];
+  if (desc.table !== undefined) checks.push(desc.table === sig.table > 0);
+  if (desc.form !== undefined) checks.push(desc.form === sig.form > 0);
+  if (desc.list !== undefined) checks.push(desc.list === (sig.list > 0 || sig.repeated > 0));
+  if (desc.columns !== undefined) checks.push(Math.abs(sig.columns - desc.columns) <= 1);
+  if (desc.inputs !== undefined) checks.push(sig.input >= desc.inputs - 1);
+  if (desc.buttons !== undefined) checks.push(sig.button >= desc.buttons - 1);
+  if (desc.images !== undefined) checks.push(sig.image >= desc.images - 1);
+  if (desc.cards !== undefined) checks.push(sig.repeated >= Math.max(1, desc.cards - 1));
+  if (checks.length === 0) return 0;
+  return checks.filter(Boolean).length / checks.length;
 }
 
 /** True when `phrase` tokens appear as a contiguous, in-order, fuzzy run in `haystack`. */

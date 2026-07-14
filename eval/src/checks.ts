@@ -3,7 +3,7 @@
 import {
   journeys,
   type LineageGraph,
-  matchComponentsByText,
+  matchComponents,
   traceLineage,
 } from "@coderadar/core";
 
@@ -217,8 +217,8 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
   }
 
   for (const query of golden.expect.queries ?? []) {
-    const id = `query:${query.terms.join("+")}`;
-    const result = matchComponentsByText(graph, query.terms);
+    const id = `query:${query.terms.join("+") || JSON.stringify(query.structure)}`;
+    const result = matchComponents(graph, { terms: query.terms, structure: query.structure });
     let passed = result.status === query.status;
     let detail: string | undefined;
     if (!passed) {

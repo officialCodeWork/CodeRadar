@@ -35,6 +35,8 @@ export interface GoldenForbidden {
 
 export interface GoldenQuery {
   terms: string[];
+  /** Optional structural descriptor (Phase 4.2), e.g. { table: true, columns: 4 }. */
+  structure?: import("@coderadar/core").StructureDescriptor;
   status: "ok" | "ambiguous" | "declined";
   /** Required top-1 component name when status is "ok". */
   top?: string;
