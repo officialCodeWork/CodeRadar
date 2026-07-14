@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CONFIDENCE_THRESHOLDS } from "@coderadar/core";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { parse as parseYaml } from "yaml";
 
@@ -61,8 +62,48 @@ function main(): void {
     );
   }
 
+  if (process.argv.includes("--calibrate")) calibrate(results);
+
   print(scorecard);
   gate(scorecard);
+}
+
+/**
+ * Measure the score → confidence calibration on the eval set and record it in
+ * eval/calibration.json: the precision at the matcher's `high` cutoff, plus the
+ * lowest score threshold at which precision still holds ≥ 0.95 (step 4.5).
+ */
+function calibrate(results: FixtureResult[]): void {
+  const ok = results
+    .flatMap((r) => r.queries)
+    .filter((o) => o.gotStatus === "ok" && o.score !== undefined);
+  const precisionAbove = (t: number): number => {
+    const bucket = ok.filter((o) => (o.score ?? 0) >= t);
+    return bucket.length > 0 ? bucket.filter((o) => o.correct).length / bucket.length : 1;
+  };
+  const scores = [...new Set(ok.map((o) => o.score ?? 0))].sort((a, b) => b - a);
+  let empiricalHighFloor = 1;
+  for (const t of scores) {
+    if (precisionAbove(t) >= 0.95) empiricalHighFloor = t;
+    else break;
+  }
+  const calibration = {
+    generatedAt: new Date().toISOString(),
+    thresholds: CONFIDENCE_THRESHOLDS,
+    measuredPrecisionAtHigh: round(precisionAbove(CONFIDENCE_THRESHOLDS.high)),
+    empiricalHighFloor: round(empiricalHighFloor),
+    sampleSize: ok.length,
+    note: "The matcher's confidenceFromScore uses these thresholds. measuredPrecisionAtHigh is the fraction of high-confidence eval answers that are correct; empiricalHighFloor is the lowest score at which precision still holds >= 0.95.",
+  };
+  fs.writeFileSync(
+    path.join(evalDir, "calibration.json"),
+    `${JSON.stringify(calibration, null, 2)}\n`,
+  );
+  console.log(
+    `\nWrote calibration.json — high=${CONFIDENCE_THRESHOLDS.high}, precision@high=${round(
+      precisionAbove(CONFIDENCE_THRESHOLDS.high),
+    )}, floor=${round(empiricalHighFloor)} (n=${ok.length})`,
+  );
 }
 
 function buildScorecard(results: FixtureResult[]): Scorecard {
@@ -92,6 +133,13 @@ function buildScorecard(results: FixtureResult[]): Scorecard {
 
   const attributed = attr.truePositives + attr.falsePositives;
   const golden = attr.truePositives + attr.falseNegatives;
+
+  // Confidence & honesty metrics (step 4.5) over every non-xfail query outcome.
+  const outcomes = results.flatMap((r) => r.queries);
+  const okAnswers = outcomes.filter((o) => o.gotStatus === "ok");
+  const highOk = okAnswers.filter((o) => o.confidence === "high");
+  const ambiguous = outcomes.filter((o) => o.expectedStatus === "ambiguous");
+
   return {
     generatedAt: new Date().toISOString(),
     commitSha: gitSha(),
@@ -104,6 +152,16 @@ function buildScorecard(results: FixtureResult[]): Scorecard {
       lineagePrecision: attributed > 0 ? round(attr.truePositives / attributed) : null,
       lineageRecall: golden > 0 ? round(attr.truePositives / golden) : null,
       matchAccuracy: queryTotal > 0 ? round(queryPass / queryTotal) : null,
+      highConfidenceCorrect:
+        highOk.length > 0 ? round(highOk.filter((o) => o.correct).length / highOk.length) : null,
+      ambiguityHonesty:
+        ambiguous.length > 0
+          ? round(ambiguous.filter((o) => o.gotStatus === "ambiguous").length / ambiguous.length)
+          : null,
+      poisonRate:
+        okAnswers.length > 0
+          ? round(okAnswers.filter((o) => !o.correct).length / okAnswers.length)
+          : null,
     },
   };
 }
@@ -124,6 +182,9 @@ function print(scorecard: Scorecard): void {
   console.log(
     `lineage precision=${fmt(s.lineagePrecision)} recall=${fmt(s.lineageRecall)} · match accuracy=${fmt(s.matchAccuracy)}`,
   );
+  console.log(
+    `high-conf correct=${fmt(s.highConfidenceCorrect)} · ambiguity honesty=${fmt(s.ambiguityHonesty)} · poison rate=${fmt(s.poisonRate)}`,
+  );
 }
 
 function gate(scorecard: Scorecard): void {
@@ -139,6 +200,20 @@ function gate(scorecard: Scorecard): void {
   checkFloor(violations, "lineagePrecision", s.lineagePrecision, thresholds.minLineagePrecision);
   checkFloor(violations, "lineageRecall", s.lineageRecall, thresholds.minLineageRecall);
   checkFloor(violations, "matchAccuracy", s.matchAccuracy, thresholds.minMatchAccuracy);
+  checkFloor(
+    violations,
+    "highConfidenceCorrect",
+    s.highConfidenceCorrect,
+    thresholds.minHighConfidenceCorrect,
+  );
+  checkFloor(violations, "ambiguityHonesty", s.ambiguityHonesty, thresholds.minAmbiguityHonesty);
+  if (
+    thresholds.maxPoisonRate !== undefined &&
+    s.poisonRate !== null &&
+    s.poisonRate > thresholds.maxPoisonRate
+  ) {
+    violations.push(`poisonRate ${s.poisonRate} > max ${thresholds.maxPoisonRate}`);
+  }
 
   if (violations.length > 0) {
     console.error(`\nEVAL GATE FAILED:\n  ${violations.join("\n  ")}`);

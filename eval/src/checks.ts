@@ -7,7 +7,7 @@ import {
   traceLineage,
 } from "@coderadar/core";
 
-import type { CheckResult, FixtureResult, Golden } from "./golden.js";
+import type { CheckResult, FixtureResult, Golden, QueryOutcome } from "./golden.js";
 
 export function runChecks(
   fixture: string,
@@ -17,6 +17,7 @@ export function runChecks(
 ): FixtureResult {
   const checks: CheckResult[] = [];
   const attribution = { truePositives: 0, falsePositives: 0, falseNegatives: 0 };
+  const queryOutcomes: QueryOutcome[] = [];
 
   const finalize = (
     kind: CheckResult["kind"],
@@ -249,9 +250,26 @@ export function runChecks(
       }
     }
     finalize("queries", id, passed, query.expectedFail, detail);
+
+    if (query.expectedFail === undefined) {
+      const top = result.candidates[0];
+      queryOutcomes.push({
+        terms: query.terms,
+        expectedStatus: query.status,
+        gotStatus: result.status,
+        ...(top !== undefined
+          ? {
+              top: top.value.component.name,
+              confidence: top.confidence.level,
+              score: top.confidence.score,
+            }
+          : {}),
+        correct: passed,
+      });
+    }
   }
 
-  return { fixture, failureMode: golden.failureMode, checks, attribution };
+  return { fixture, failureMode: golden.failureMode, checks, attribution, queries: queryOutcomes };
 }
 
 /** Endpoints reached from a definition or a specific instance. Null if the target is missing. */

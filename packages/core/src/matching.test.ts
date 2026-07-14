@@ -67,6 +67,15 @@ describe("matchComponentsByText scorer (TRACKER 4.1, A4/A10)", () => {
     expect(result.candidates[0]?.value.component.name).toBe("BillingForm");
   });
 
+  it("the disambiguation question names each leader's distinctive text (D6)", () => {
+    const result = matchComponentsByText(graph(forms), ["Save"]);
+    expect(result.status).toBe("ambiguous");
+    // Built from the DIFFERENCES: each tied candidate's unique text.
+    expect(result.disambiguation).toContain("Card number");
+    expect(result.disambiguation).toContain("Notifications");
+    expect(result.disambiguation).toContain("Display name");
+  });
+
   it("respects word order — 'Order deleted' ≠ 'Delete order'", () => {
     const g = graph([
       component("Toast", ["Order deleted"]),

@@ -1,0 +1,11 @@
+{
+  "generatedAt": "2026-07-14T21:10:13.631Z",
+  "thresholds": {
+    "high": 0.8,
+    "medium": 0.5
+  },
+  "measuredPrecisionAtHigh": 1,
+  "empiricalHighFloor": 1,
+  "sampleSize": 71,
+  "note": "The matcher's confidenceFromScore uses these thresholds. measuredPrecisionAtHigh is the fraction of high-confidence eval answers that are correct; empiricalHighFloor is the lowest score at which precision still holds >= 0.95."
+}
