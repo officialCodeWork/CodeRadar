@@ -131,6 +131,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
       edges.push(edge);
     }
   };
+  const stores = detectStores(project, root, nodes, addEdge, baseUrls, wrappers);
 
   for (const sourceFile of project.getSourceFiles()) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
@@ -161,10 +162,10 @@ export function scanReact(options: ScanOptions): LineageGraph {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers);
+      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores);
     }
 
-    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances);
+    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores);
     collectHocAliases(sourceFile, hocAliases);
   }
 
@@ -384,6 +385,7 @@ function extractBodyFacts(
   addEdge: (edge: LineageEdge) => void,
   baseUrls: string[],
   wrappers: WrapperRegistry,
+  stores: StoreRegistry,
 ): void {
   // A wrapper's own body is plumbing: its URL is a parameter placeholder, so a
   // data source emitted here would attribute ":path" to every consumer. Call
@@ -392,6 +394,29 @@ function extractBodyFacts(
 
   for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     const callee = call.getExpression().getText();
+
+    // Store readers/dispatchers first — useSelector would otherwise fall
+    // through to the generic per-component state handling.
+    if (callee === "useSelector") {
+      const sliceId = selectorSliceId(call, stores);
+      if (sliceId !== undefined) {
+        addEdge({ from: ownerId, to: sliceId, kind: "reads-state" });
+        continue;
+      }
+    }
+    const zustandId = stores.zustandHooks.get(callee);
+    if (zustandId !== undefined) {
+      addEdge({ from: ownerId, to: zustandId, kind: "reads-state" });
+      continue;
+    }
+    const thunkSources = stores.thunkSources.get(callee);
+    if (thunkSources !== undefined) {
+      // dispatch(fetchUsers()) — this component initiates the fetch.
+      for (const dsId of thunkSources) {
+        addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
+      }
+      continue;
+    }
 
     const dataSource = declIsWrapper ? null : detectDataSource(call, callee, baseUrls, wrappers);
     if (dataSource !== null) {
@@ -465,6 +490,16 @@ function extractBodyFacts(
     }
     addEdge({ from: ownerId, to: evId, kind: "handles" });
   }
+}
+
+/** `useSelector((s) => s.users.list)` → the "users" slice's StateNode id. */
+function selectorSliceId(call: CallExpression, stores: StoreRegistry): string | undefined {
+  const selector = call.getArguments()[0];
+  if (selector === undefined || !Node.isArrowFunction(selector)) return undefined;
+  const param = selector.getParameters()[0]?.getName();
+  if (param === undefined) return undefined;
+  const match = new RegExp(`\\b${param}\\.([A-Za-z_$][\\w$]*)`).exec(selector.getBody().getText());
+  return match?.[1] !== undefined ? stores.reduxSlices.get(match[1]) : undefined;
 }
 
 type DetectedSource = {
@@ -652,6 +687,142 @@ function stateVariableName(call: CallExpression): string | null {
   return null;
 }
 
+/** Store registry (TRACKER step 2.4, failure mode C6). */
+interface StoreRegistry {
+  /** Redux slice name → its global StateNode id. */
+  reduxSlices: Map<string, string>;
+  /** Zustand hook name (useCartStore) → its global StateNode id. */
+  zustandHooks: Map<string, string>;
+  /** createAsyncThunk name → the data-source node ids its payload creator hits. */
+  thunkSources: Map<string, string[]>;
+}
+
+/**
+ * Global stores decouple the reader from the fetch: a component renders
+ * `useSelector(s => s.users.list)` while the API call that POPULATED the
+ * slice happened at login, in another component. This pass finds the store
+ * shapes and wires data-source --writes-state--> slice, so lineage flows
+ * reader → slice → populating API.
+ */
+function detectStores(
+  project: Project,
+  root: string,
+  nodes: Map<string, LineageNode>,
+  addEdge: (edge: LineageEdge) => void,
+  baseUrls: string[],
+  wrappers: WrapperRegistry,
+): StoreRegistry {
+  const registry: StoreRegistry = {
+    reduxSlices: new Map(),
+    zustandHooks: new Map(),
+    thunkSources: new Map(),
+  };
+
+  const ensureDataSource = (call: Node, file: string): string | null => {
+    if (!Node.isCallExpression(call)) return null;
+    const detected = detectDataSource(call, call.getExpression().getText(), baseUrls, wrappers);
+    if (detected === null || detected.sourceKind === "react-query" || detected.sourceKind === "swr") {
+      return null;
+    }
+    const dsId = nodeId("data-source", file, `${detected.sourceKind}:${detected.endpoint}`);
+    if (!nodes.has(dsId)) {
+      nodes.set(dsId, {
+        id: dsId,
+        kind: "data-source",
+        name: detected.endpoint,
+        loc: locOf(call, file),
+        sourceKind: detected.sourceKind,
+        method: detected.method,
+        endpoint: detected.endpoint,
+        raw: detected.raw,
+        resolved: detected.resolved,
+      });
+    }
+    return dsId;
+  };
+
+  // Pass 1: slices, zustand stores, thunks.
+  for (const sourceFile of project.getSourceFiles()) {
+    const file = toPosix(path.relative(root, sourceFile.getFilePath()));
+    for (const variable of sourceFile.getVariableDeclarations()) {
+      const init = variable.getInitializer();
+      if (init === undefined || !Node.isCallExpression(init)) continue;
+      const callee = init.getExpression().getText();
+
+      if (callee === "createSlice") {
+        const config = init.getArguments()[0];
+        const nameInit = config !== undefined ? propertyInitializer(config, "name") : undefined;
+        const sliceName =
+          nameInit !== undefined && Node.isStringLiteral(nameInit)
+            ? nameInit.getLiteralValue()
+            : variable.getName();
+        const stateId = nodeId("state", file, `slice:${sliceName}`);
+        if (!nodes.has(stateId)) {
+          nodes.set(stateId, {
+            id: stateId,
+            kind: "state",
+            name: sliceName,
+            loc: locOf(variable, file),
+            stateKind: "redux",
+          });
+        }
+        registry.reduxSlices.set(sliceName, stateId);
+      } else if (callee === "createAsyncThunk") {
+        const payloadCreator = init.getArguments()[1];
+        const sources: string[] = [];
+        if (payloadCreator !== undefined) {
+          for (const call of payloadCreator.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+            const dsId = ensureDataSource(call, file);
+            if (dsId !== null) sources.push(dsId);
+          }
+        }
+        registry.thunkSources.set(variable.getName(), sources);
+      } else if (callee === "create" && HOOK_NAME.test(variable.getName())) {
+        // Zustand: const useCartStore = create((set) => ({ ..., load: async () => { fetch...; set(...) } }))
+        const stateId = nodeId("state", file, `store:${variable.getName()}`);
+        if (!nodes.has(stateId)) {
+          nodes.set(stateId, {
+            id: stateId,
+            kind: "state",
+            name: variable.getName(),
+            loc: locOf(variable, file),
+            stateKind: "zustand",
+          });
+        }
+        registry.zustandHooks.set(variable.getName(), stateId);
+        for (const call of init.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+          const dsId = ensureDataSource(call, file);
+          if (dsId !== null) addEdge({ from: dsId, to: stateId, kind: "writes-state" });
+        }
+      }
+    }
+  }
+
+  // Pass 2: thunk → slice associations via extraReducers addCase(thunk.fulfilled).
+  for (const sourceFile of project.getSourceFiles()) {
+    for (const access of sourceFile.getDescendantsOfKind(SyntaxKind.PropertyAccessExpression)) {
+      if (!["fulfilled", "rejected", "pending"].includes(access.getName())) continue;
+      const thunkName = access.getExpression().getText();
+      const sources = registry.thunkSources.get(thunkName);
+      if (sources === undefined || sources.length === 0) continue;
+      const sliceCall = access.getFirstAncestor(
+        (a) => Node.isCallExpression(a) && a.getExpression().getText() === "createSlice",
+      );
+      if (sliceCall === undefined || !Node.isCallExpression(sliceCall)) continue;
+      const config = sliceCall.getArguments()[0];
+      const nameInit = config !== undefined ? propertyInitializer(config, "name") : undefined;
+      if (nameInit === undefined || !Node.isStringLiteral(nameInit)) continue;
+      const stateId = registry.reduxSlices.get(nameInit.getLiteralValue());
+      if (stateId === undefined) continue;
+      for (const dsId of sources) {
+        addEdge({ from: dsId, to: stateId, kind: "writes-state" });
+      }
+    }
+  }
+
+  return registry;
+}
+
 const CLASS_COMPONENT_BASE = /(React\.)?(Pure)?Component/;
 
 /** Legacy class components: render() is the body, this.state is state, lifecycle fetches count. */
@@ -664,6 +835,7 @@ function scanClassComponents(
   wrappers: WrapperRegistry,
   localeTable: LocaleTable | null,
   pendingInstances: PendingInstance[],
+  stores: StoreRegistry,
 ): void {
   for (const cls of sourceFile.getClasses()) {
     const name = cls.getName();
@@ -705,7 +877,7 @@ function scanClassComponents(
     });
     collectInstanceSites(render, id, file, pendingInstances);
     // Whole class body: lifecycle fetches (componentDidMount etc.) + render events.
-    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers);
+    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers, stores);
     extractClassState(cls, name, id, file, nodes, addEdge);
   }
 }
