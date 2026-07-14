@@ -42,6 +42,8 @@ export interface GoldenQuery {
   top?: string;
   /** Ancestor names the top match must list as `context` (step 4.3). */
   context?: string[];
+  /** When set, the top candidate's confidence level must equal this (A3/A12 honesty). */
+  confidence?: "high" | "medium" | "low";
   /**
    * When set, `top` need only appear within the first `topK` candidates rather
    * than at rank 1 — the honest bar for OCR-noisy input (failure mode A10).

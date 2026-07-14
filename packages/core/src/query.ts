@@ -338,11 +338,16 @@ export function matchComponents(
   }
   const winners = scored.filter((s) => !collapsed.has(s.match.component.id));
 
-  const candidates: Candidate<ComponentMatch>[] = winners.map((s) => ({
-    value: s.match,
-    confidence: confidenceFromScore(s.coverage),
-    evidence: s.evidence,
-  }));
+  const candidates: Candidate<ComponentMatch>[] = winners.map((s) => {
+    const conf = confidenceFromScore(s.coverage);
+    // Structure-only matches (no text, alias, or correction evidence — A3/A12)
+    // are an honest fallback, never "high": shape alone can't be certain.
+    const confidence =
+      s.covered.size === 0 && conf.level === "high"
+        ? { score: conf.score, level: "medium" as const }
+        : conf;
+    return { value: s.match, confidence, evidence: s.evidence };
+  });
 
   const top = winners[0];
   const tied =

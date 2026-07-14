@@ -248,6 +248,11 @@ export function runChecks(
         passed = missing.length === 0;
         if (!passed) detail = `expected context [${query.context.join(", ")}], got [${ctx.join(", ")}]`;
       }
+      if (passed && query.confidence !== undefined) {
+        const level = result.candidates[0]?.confidence.level;
+        passed = level === query.confidence;
+        if (!passed) detail = `expected confidence ${query.confidence}, got ${level ?? "none"}`;
+      }
     }
     finalize("queries", id, passed, query.expectedFail, detail);
 
