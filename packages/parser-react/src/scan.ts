@@ -27,6 +27,7 @@ import {
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
+import { detectRoutes } from "./routes.js";
 import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
 
 export interface ScanOptions {
@@ -187,6 +188,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
   );
   resolvePropFlow(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers);
   resolveHandlerChains(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers, root);
+  detectRoutes(project, root, nodes, addEdge);
 
   return {
     version: 2,

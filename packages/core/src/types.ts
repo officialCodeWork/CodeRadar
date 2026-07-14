@@ -27,7 +27,8 @@ export type NodeKind =
   | "instance"
   | "data-source"
   | "state"
-  | "event";
+  | "event"
+  | "route";
 
 export interface BaseNode {
   /** Stable id, unique within a graph. See nodeId()/instanceId(). */
@@ -171,13 +172,45 @@ export interface EventNode extends BaseNode {
   handler: string | null;
 }
 
+/** Which routing system declared a route. */
+export type RouterKind = "react-router" | "nextjs-app" | "nextjs-pages";
+
+/**
+ * A URL route and the page component it renders (TRACKER step 3.1, failure
+ * mode B4). Routes are journey-graph entry points: a journey step like
+ * "navigate to /users/:id" resolves through the route to the page component's
+ * instance tree.
+ */
+export interface RouteNode extends BaseNode {
+  kind: "route";
+  /**
+   * Route pattern with dynamic segments in :param form — "/users/:id",
+   * catch-alls as ":param*". Matches the endpoint-pattern convention so
+   * navigate("/users/" + id) effects (step 3.2) join on the same shape.
+   */
+  path: string;
+  router: RouterKind;
+  /**
+   * Name of the layout component wrapping this route's page (a pathless
+   * layout route in React Router; the nearest layout.tsx in Next.js app
+   * router). Null when the page renders bare.
+   */
+  layout: string | null;
+  /**
+   * Guard components between the route and its page — auth/role wrappers
+   * like <RequireAuth> around the element or as pathless ancestor routes.
+   */
+  guards: string[];
+}
+
 export type LineageNode =
   | ComponentNode
   | InstanceNode
   | HookNode
   | DataSourceNode
   | StateNode
-  | EventNode;
+  | EventNode
+  | RouteNode;
 
 export type EdgeKind =
   | "renders" // component|instance -> instance (definition-level until Phase 2.1)
@@ -188,7 +221,8 @@ export type EdgeKind =
   | "reads-state" // component | hook -> state
   | "writes-state" // data-source | event -> state (Phase 2.4)
   | "handles" // component -> event
-  | "triggers"; // event -> data-source | state (handler causes a fetch / state write)
+  | "triggers" // event -> data-source | state (handler causes a fetch / state write)
+  | "routes-to"; // route -> page component definition (its instances form the page tree)
 
 /** A statically-detected condition guarding an edge (feature flag, role, branch). */
 export interface EdgeCondition {

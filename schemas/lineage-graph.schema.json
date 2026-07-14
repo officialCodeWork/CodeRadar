@@ -87,6 +87,9 @@
         },
         {
           "$ref": "#/definitions/EventNode"
+        },
+        {
+          "$ref": "#/definitions/RouteNode"
         }
       ]
     },
@@ -498,6 +501,74 @@
       "additionalProperties": false,
       "description": "A user or system event a component responds to."
     },
+    "RouteNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "route"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "path": {
+          "type": "string",
+          "description": "Route pattern with dynamic segments in :param form — \"/users/:id\", catch-alls as \":param*\". Matches the endpoint-pattern convention so navigate(\"/users/\" + id) effects (step 3.2) join on the same shape."
+        },
+        "router": {
+          "$ref": "#/definitions/RouterKind"
+        },
+        "layout": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the layout component wrapping this route's page (a pathless layout route in React Router; the nearest layout.tsx in Next.js app router). Null when the page renders bare."
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Guard components between the route and its page — auth/role wrappers like <RequireAuth> around the element or as pathless ancestor routes."
+        }
+      },
+      "required": [
+        "guards",
+        "id",
+        "kind",
+        "layout",
+        "loc",
+        "name",
+        "path",
+        "router"
+      ],
+      "additionalProperties": false,
+      "description": "A URL route and the page component it renders (TRACKER step 3.1, failure mode B4). Routes are journey-graph entry points: a journey step like \"navigate to /users/:id\" resolves through the route to the page component's instance tree."
+    },
+    "RouterKind": {
+      "type": "string",
+      "enum": [
+        "react-router",
+        "nextjs-app",
+        "nextjs-pages"
+      ],
+      "description": "Which routing system declared a route."
+    },
     "LineageEdge": {
       "type": "object",
       "properties": {
@@ -536,7 +607,8 @@
         "reads-state",
         "writes-state",
         "handles",
-        "triggers"
+        "triggers",
+        "routes-to"
       ]
     },
     "EdgeCondition": {
