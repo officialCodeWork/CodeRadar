@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 4 — Matching engine
-- **Next step:** 4.1 — Term matching v2
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5
+- **Next step:** 4.2 — Structural matching
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000)
 
 ## What CodeRadar is
@@ -218,7 +218,7 @@ The heart of the project. C1 and B1 live here.
 
 ## Phase 4 — Matching engine
 
-### [ ] 4.1 Term matching v2
+### [x] 4.1 Term matching v2
 **Failure modes:** A4, A7 (matching half), A10
 **Build:** replace `matchComponentsByText` with a scorer over instances:
 - Normalization (from 1.5) both sides; fuzzy token match (edit distance ≤ 1 per token, token-set overlap) for OCR noise.

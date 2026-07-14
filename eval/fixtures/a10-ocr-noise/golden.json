@@ -1,0 +1,18 @@
+{
+  "failureMode": "A10",
+  "note": "OCR noise: screenshot text arrives misspelled ('Acount Reconcilliation', 'Invoise Dashbord'). Fuzzy token matching — a small, length-scaled edit distance on long distinctive tokens — still lands the right component in the top 3 (here, top 1). Short common tokens must still match exactly so noise doesn't collide unrelated components.",
+  "expect": {
+    "components": [
+      { "name": "ReconciliationReport", "instances": 0 },
+      { "name": "InvoiceDashboard", "instances": 0 },
+      { "name": "ShipmentTracker", "instances": 0 },
+      { "name": "SettingsPanel", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["Acount Reconcilliation"], "status": "ok", "top": "ReconciliationReport", "topK": 3 },
+      { "terms": ["Invoise Dashbord"], "status": "ok", "top": "InvoiceDashboard", "topK": 3 },
+      { "terms": ["Shipmnt Tracking"], "status": "ok", "top": "ShipmentTracker", "topK": 3 },
+      { "terms": ["Reconciliation"], "status": "ok", "top": "ReconciliationReport" }
+    ]
+  }
+}

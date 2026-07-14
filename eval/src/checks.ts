@@ -224,9 +224,15 @@ export function runChecks(fixture: string, golden: Golden, graph: LineageGraph):
     if (!passed) {
       detail = `expected status ${query.status}, got ${result.status}`;
     } else if (query.status === "ok" && query.top !== undefined) {
-      const top = result.candidates[0]?.value.component.name;
-      passed = top === query.top;
-      if (!passed) detail = `expected top ${query.top}, got ${top ?? "none"}`;
+      const k = query.topK ?? 1;
+      const topNames = result.candidates.slice(0, k).map((c) => c.value.component.name);
+      passed = topNames.includes(query.top);
+      if (!passed) {
+        detail =
+          k > 1
+            ? `expected ${query.top} in top ${k}, got [${topNames.join(", ")}]`
+            : `expected top ${query.top}, got ${topNames[0] ?? "none"}`;
+      }
     }
     finalize("queries", id, passed, query.expectedFail, detail);
   }
