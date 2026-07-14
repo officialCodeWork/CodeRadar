@@ -82,6 +82,17 @@ export interface GoldenJourney {
   expectedFail?: string;
 }
 
+export interface GoldenCondition {
+  /** Component the gated edge originates from. */
+  component: string;
+  /** Which edge kind carries the condition. */
+  edge: "handles" | "renders";
+  kind: "flag" | "role";
+  /** Substring the condition expression must contain (e.g. "new-billing"). */
+  expression: string;
+  expectedFail?: string;
+}
+
 export interface Golden {
   failureMode: string;
   note?: string;
@@ -105,6 +116,8 @@ export interface Golden {
     effects?: GoldenEffect[];
     /** Journey paths (step 3.3): page → event → effect → page, lazily expanded. */
     journeys?: GoldenJourney[];
+    /** Flag/role conditions on renders/handles edges (step 3.5). */
+    conditions?: GoldenCondition[];
   };
 }
 
@@ -113,7 +126,15 @@ export type CheckStatus = "pass" | "fail" | "xfail" | "unexpected-pass";
 export interface CheckResult {
   /** e.g. "components:DataTable", "attribution:DataTable@pages/UsersPage.tsx" */
   id: string;
-  kind: "components" | "attributions" | "forbidden" | "queries" | "routes" | "effects" | "journeys";
+  kind:
+    | "components"
+    | "attributions"
+    | "forbidden"
+    | "queries"
+    | "routes"
+    | "effects"
+    | "journeys"
+    | "conditions";
   status: CheckStatus;
   detail?: string;
 }

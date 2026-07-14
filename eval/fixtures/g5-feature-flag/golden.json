@@ -1,0 +1,30 @@
+{
+  "failureMode": "G5",
+  "note": "Feature-flag and role guards become EdgeConditions on the enclosed renders/handles edges, and journeys surface them: the flag-gated 'Try new billing' navigation and the role-gated 'Reset billing' fetch each carry their guard, so a journey step reads with the flag/role name. isEnabled(...) is a default flag callee; role === \"admin\" matches the role heuristic.",
+  "expect": {
+    "components": [
+      { "name": "BillingPage", "instances": 0 },
+      { "name": "NewBillingPage", "instances": 0 },
+      { "name": "BetaBanner", "instances": 1 }
+    ],
+    "routes": [
+      { "path": "/billing", "component": "BillingPage" },
+      { "path": "/billing/new", "component": "NewBillingPage" }
+    ],
+    "conditions": [
+      { "component": "BillingPage", "edge": "handles", "kind": "flag", "expression": "new-billing" },
+      { "component": "BillingPage", "edge": "handles", "kind": "role", "expression": "admin" },
+      { "component": "BillingPage", "edge": "renders", "kind": "flag", "expression": "beta-banner" }
+    ],
+    "journeys": [
+      {
+        "start": "/billing",
+        "depth": 3,
+        "expect": [
+          { "pages": ["/billing", "/billing/new"], "end": "terminal" },
+          { "pages": ["/billing"], "end": "terminal" }
+        ]
+      }
+    ]
+  }
+}

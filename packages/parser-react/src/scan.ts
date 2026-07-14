@@ -2,6 +2,7 @@ import path from "node:path";
 
 import {
   type DataSourceKind,
+  type EdgeCondition,
   instanceId,
   type InstanceNode,
   type LineageEdge,
@@ -59,6 +60,13 @@ export interface ScanOptions {
    * ours even when the definition isn't (failure mode A5).
    */
   designSystemPackages?: string[];
+  /**
+   * Extra feature-flag call names beyond the defaults (useFlag, useFeature,
+   * isEnabled, …). A `renders`/`handles` edge gated behind one of these — or a
+   * role check — carries an EdgeCondition so journeys read "… [flag] step"
+   * (TRACKER step 3.5, failure modes G5/B5).
+   */
+  featureFlags?: string[];
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -112,12 +120,26 @@ const HOTKEY_HOOKS = new Set([
 ]);
 /** Form components whose `onSubmit` prop is a real submit handler (Formik, 3.4). */
 const FORM_TAGS = new Set(["Formik", "Form"]);
+/** Default feature-flag call names classified as `flag` conditions (3.5). */
+const DEFAULT_FLAG_CALLEES = [
+  "useFlag",
+  "useFeature",
+  "useFeatureFlag",
+  "useFlags",
+  "isEnabled",
+  "isFeatureEnabled",
+  "hasFeature",
+  "featureEnabled",
+];
+/** Heuristic for role/permission guards classified as `role` conditions (3.5). */
+const ROLE_PATTERN = /\brole\b|\bisAdmin\b|\bisSuperuser\b|hasRole|hasPermission|\bcan\(|\bpermission|useRole|usePermission/i;
 
 /** Scan a directory of React source and produce a lineage graph. */
 export function scanReact(options: ScanOptions): LineageGraph {
   const root = path.resolve(options.root);
   const include = options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
   const baseUrls = options.baseUrls ?? [];
+  const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
 
   const project = new Project({
     compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
@@ -183,10 +205,10 @@ export function scanReact(options: ScanOptions): LineageGraph {
         nodes.set(id, { id, kind: "hook", name: decl.name, loc: decl.loc, exportName: decl.exportName });
       }
 
-      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs);
+      extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
     }
 
-    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores, handlerExprs);
+    scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores, handlerExprs, flagCallees);
     collectHocAliases(sourceFile, hocAliases);
   }
 
@@ -197,6 +219,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     hocAliases,
     options.designSystemPackages ?? [],
     root,
+    flagCallees,
   );
   resolvePropFlow(pendingInstances, instanceIds, nodes, edges, addEdge, baseUrls, wrappers);
   // Routes first: navigate() effects (3.2) join to RouteNodes by path shape.
@@ -401,6 +424,74 @@ function branchTag(node: Node, boundary: Node): { branch?: string } {
   return {};
 }
 
+/**
+ * The flag/role condition guarding a rendered instance or a wired event
+ * (TRACKER step 3.5). Walks the enclosing branches up to the component
+ * boundary; returns the nearest one that is a feature-flag call or a role
+ * check, so its `renders`/`handles` edge (and any journey step through it)
+ * carries the flag/role. Undefined when the guard is a plain condition.
+ */
+function edgeCondition(node: Node, flagCallees: ReadonlySet<string>): EdgeCondition | undefined {
+  const boundary = node.getFirstAncestor(
+    (a) =>
+      Node.isFunctionDeclaration(a) ||
+      Node.isArrowFunction(a) ||
+      Node.isFunctionExpression(a) ||
+      Node.isMethodDeclaration(a),
+  );
+  let current: Node | undefined = node;
+  while (current !== undefined && current !== boundary) {
+    const parent: Node | undefined = current.getParent();
+    if (parent === undefined) break;
+    let test: Node | undefined;
+    let negate = false;
+    if (Node.isConditionalExpression(parent)) {
+      if (parent.getWhenTrue() === current) test = parent.getCondition();
+      else if (parent.getWhenFalse() === current) {
+        test = parent.getCondition();
+        negate = true;
+      }
+    } else if (
+      Node.isBinaryExpression(parent) &&
+      parent.getOperatorToken().getKind() === SyntaxKind.AmpersandAmpersandToken &&
+      parent.getRight() === current
+    ) {
+      test = parent.getLeft();
+    } else if (Node.isIfStatement(parent) && parent.getThenStatement() === current) {
+      test = parent.getExpression();
+    }
+    if (test !== undefined) {
+      const condition = classifyTest(test, flagCallees);
+      if (condition !== undefined) {
+        return negate ? { ...condition, expression: `!(${condition.expression})` } : condition;
+      }
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
+/** Classify a guard's test expression as a feature-flag or role condition. */
+function classifyTest(test: Node, flagCallees: ReadonlySet<string>): EdgeCondition | undefined {
+  const text = test.getText();
+  for (const callee of flagCallees) {
+    if (new RegExp(`\\b${callee}\\s*\\(`).test(text)) return { kind: "flag", expression: text };
+  }
+  // A flag hook result used as a bare boolean: `const beta = useFlag("beta")`.
+  if (Node.isIdentifier(test)) {
+    for (const definition of test.getDefinitionNodes()) {
+      if (!Node.isVariableDeclaration(definition)) continue;
+      const init = definition.getInitializer();
+      if (init === undefined || !Node.isCallExpression(init)) continue;
+      const callee = init.getExpression().getText();
+      const name = callee.includes(".") ? (callee.split(".").pop() ?? callee) : callee;
+      if (flagCallees.has(name)) return { kind: "flag", expression: `${text} (${init.getText()})` };
+    }
+  }
+  if (ROLE_PATTERN.test(text)) return { kind: "role", expression: text };
+  return undefined;
+}
+
 function extractRenderedComponents(fn: Node): string[] {
   const names = new Set<string>();
   const record = (tagName: string): void => {
@@ -432,6 +523,7 @@ function extractBodyFacts(
   wrappers: WrapperRegistry,
   stores: StoreRegistry,
   handlerExprs: Map<string, Node[]>,
+  flagCallees: ReadonlySet<string>,
 ): void {
   // A wrapper's own body is plumbing: its URL is a parameter placeholder, so a
   // data source emitted here would attribute ":path" to every consumer. Call
@@ -454,14 +546,17 @@ function extractBodyFacts(
     ) {
       handler = handlerNode.getText();
     }
-    const suffix = `${handler !== null ? `:${handler}` : ""}${source !== "jsx" ? `@${source}` : ""}`;
+    // Inline handlers (no name) at different call sites are distinct events —
+    // disambiguate by line so their conditions and effects don't collapse.
+    const atLoc = locOf(at, file);
+    const suffix = `${handler !== null ? `:${handler}` : `@${atLoc.line}`}${source !== "jsx" ? `@${source}` : ""}`;
     const evId = nodeId("event", file, `${declName}.${eventName}${suffix}`);
     if (!nodes.has(evId)) {
       nodes.set(evId, {
         id: evId,
         kind: "event",
         name: eventName,
-        loc: locOf(at, file),
+        loc: atLoc,
         event: eventName,
         handler,
         ...(source !== "jsx" ? { source } : {}),
@@ -473,7 +568,8 @@ function extractBodyFacts(
       if (list) list.push(handlerNode);
       else handlerExprs.set(evId, [handlerNode]);
     }
-    addEdge({ from: ownerId, to: evId, kind: "handles" });
+    const condition = edgeCondition(at, flagCallees);
+    addEdge({ from: ownerId, to: evId, kind: "handles", ...(condition ? { condition } : {}) });
   };
 
   for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
@@ -971,6 +1067,7 @@ function scanClassComponents(
   pendingInstances: PendingInstance[],
   stores: StoreRegistry,
   handlerExprs: Map<string, Node[]>,
+  flagCallees: ReadonlySet<string>,
 ): void {
   for (const cls of sourceFile.getClasses()) {
     const name = cls.getName();
@@ -1012,7 +1109,7 @@ function scanClassComponents(
     });
     collectInstanceSites(render, id, file, pendingInstances);
     // Whole class body: lifecycle fetches (componentDidMount etc.) + render events.
-    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs);
+    extractBodyFacts(name, cls, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
     extractClassState(cls, name, id, file, nodes, addEdge);
   }
 }
@@ -1164,6 +1261,7 @@ function materializeInstances(
   hocAliases: ReadonlyMap<string, string>,
   designSystemPackages: string[],
   root: string,
+  flagCallees: ReadonlySet<string>,
 ): Array<string | null> {
   const definitionsByName = new Map<string, string>();
   for (const node of nodes.values()) {
@@ -1259,7 +1357,8 @@ function materializeInstances(
     nodes.set(id, instance);
     idByIndex[index] = id;
     created.push(instance);
-    addEdge({ from: pending.ownerId, to: id, kind: "renders" });
+    const condition = edgeCondition(pending.element, flagCallees);
+    addEdge({ from: pending.ownerId, to: id, kind: "renders", ...(condition ? { condition } : {}) });
     if (!resolved.external) {
       addEdge({ from: id, to: resolved.definitionId, kind: "instance-of" });
     }
