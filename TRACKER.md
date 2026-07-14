@@ -227,7 +227,7 @@ The heart of the project. C1 and B1 live here.
 **Accept:** `a4-generic-text` green ("Save" alone → `ambiguous`; "Save" + "invoice details" → correct top-1); noisy-term fixture `a10-ocr-noise` (misspelled terms) top-3 correct.
 
 ### [x] 4.2 Structural matching
-**Failure modes:** A1, A3, A12
+**Failure modes:** A1, A3, A12 — fixtures: `a1-no-static-text`, `a3-api-text`, `a12-non-text` (structure-only matches capped at medium confidence — honest graceful degradation)
 **Build:** structural signature per instance subtree (child element kinds/counts: table with N columns, form with M inputs, card grid). Query side accepts a structure descriptor (from vision output: "a table with columns Name, Email, Actions") and scores against signatures. Text and structure scores combine into one ranking.
 **Accept:** fixture `a1-no-static-text` (dashboard, zero literals) top-3 correct via structure alone.
 

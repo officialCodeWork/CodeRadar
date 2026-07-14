@@ -102,6 +102,28 @@ describe("matchComponentsByText scorer (TRACKER 4.1, A4/A10)", () => {
   it("declines when nothing matches", () => {
     expect(matchComponentsByText(graph(forms), ["Purchase history"]).status).toBe("declined");
   });
+
+  it("caps a structure-only match at medium confidence, never high (A3/A12)", () => {
+    const chart: ComponentNode = {
+      ...component("MetricsChart", []),
+      structure: {
+        table: 0,
+        columns: 0,
+        form: 0,
+        input: 0,
+        button: 2,
+        link: 0,
+        image: 0,
+        heading: 0,
+        list: 0,
+        repeated: 0,
+      },
+    };
+    const result = matchComponents(graph([chart]), { structure: { buttons: 2 } });
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.value.component.name).toBe("MetricsChart");
+    expect(result.candidates[0]?.confidence.level).toBe("medium");
+  });
 });
 
 describe("alias glossary & corrections (TRACKER 4.6, E2/G4)", () => {
