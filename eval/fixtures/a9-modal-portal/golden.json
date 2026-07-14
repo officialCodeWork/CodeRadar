@@ -1,0 +1,25 @@
+{
+  "failureMode": "A9",
+  "note": "Portals & toasts: the dialog renders into document.body via createPortal — a screenshot of it shows nothing from its trigger's DOM subtree. Matching the modal text must surface ConfirmDialog (whose instance list points at the OrdersToolbar trigger site). Toast text ('Order deleted') exists only as a call argument; it must match the CALLING component.",
+  "expect": {
+    "components": [
+      { "name": "ConfirmDialog", "instances": 1 },
+      { "name": "OrdersToolbar", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "OrdersToolbar", "endpoints": ["/api/orders/selected"] },
+      {
+        "component": "ConfirmDialog",
+        "instanceAt": "OrdersToolbar.tsx",
+        "endpoints": ["/api/orders/selected"],
+        "_note": "not data-in: the dialog's confirm button TRIGGERS the DELETE via the resolved handler chain (2.3) — correct effect lineage"
+      }
+    ],
+    "queries": [
+      { "terms": ["Delete this order?"], "status": "ok", "top": "ConfirmDialog" },
+      { "terms": ["Confirm delete"], "status": "ok", "top": "ConfirmDialog" },
+      { "terms": ["Order deleted"], "status": "ok", "top": "OrdersToolbar" },
+      { "terms": ["Delete order"], "status": "ok", "top": "OrdersToolbar" }
+    ]
+  }
+}

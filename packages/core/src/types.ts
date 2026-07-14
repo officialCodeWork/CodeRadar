@@ -47,10 +47,12 @@ export interface RenderedText {
   text: string;
   /**
    * Where the text comes from: JSX children, a string attribute
-   * (placeholder/label/title/alt/aria-label), or an i18n key resolved
-   * against locale files.
+   * (placeholder/label/title/alt/aria-label), an i18n key resolved against
+   * locale files, or portal-rendered content (toast("Order deleted") — the
+   * text appears far from the caller in the DOM, but the CALLER is the
+   * component a screenshot of it should match).
    */
-  source: "jsx" | "attribute" | "i18n";
+  source: "jsx" | "attribute" | "i18n" | "portal";
   /** i18n entries only: the translation key, e.g. "team.title". */
   key?: string;
   /** i18n entries only: which locale this text belongs to. */
