@@ -11,6 +11,7 @@ import {
   nodeId,
   type RenderedText,
   type SourceLocation,
+  type StructuralSignature,
 } from "@coderadar/core";
 import {
   type ArrowFunction,
@@ -198,6 +199,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
             ...(localeTable !== null ? i18nRenderedText(decl.fn, localeTable) : []),
           ],
           rendersComponents: extractRenderedComponents(decl.fn),
+          structure: extractStructure(decl.fn),
           ...(usesPortal ? { flags: ["portal"] } : {}),
         });
         collectInstanceSites(decl.fn, id, file, pendingInstances);
@@ -490,6 +492,67 @@ function classifyTest(test: Node, flagCallees: ReadonlySet<string>): EdgeConditi
   }
   if (ROLE_PATTERN.test(text)) return { kind: "role", expression: text };
   return undefined;
+}
+
+/**
+ * Structural fingerprint of a component's rendered JSX (TRACKER step 4.2):
+ * counts of tables, columns, forms, inputs, etc., folding raw DOM tags and
+ * common design-system component names into the same buckets so a screenshot
+ * with little text still matches on shape (failure modes A1/A3/A12).
+ */
+function emptyStructure(): StructuralSignature {
+  return {
+    table: 0,
+    columns: 0,
+    form: 0,
+    input: 0,
+    button: 0,
+    link: 0,
+    image: 0,
+    heading: 0,
+    list: 0,
+    repeated: 0,
+  };
+}
+
+function extractStructure(fn: Node): StructuralSignature {
+  const sig = emptyStructure();
+  let thCount = 0;
+  const tags = [
+    ...fn.getDescendantsOfKind(SyntaxKind.JsxOpeningElement),
+    ...fn.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement),
+  ];
+  for (const el of tags) {
+    const raw = el.getTagNameNode().getText();
+    const tag = raw.split(".").pop() ?? raw;
+    const lower = tag.toLowerCase();
+    if (lower === "table" || /^(data)?(table|grid|datagrid)$/.test(lower)) sig.table += 1;
+    else if (lower === "form" || tag === "Formik") sig.form += 1;
+    else if (
+      lower === "input" ||
+      lower === "select" ||
+      lower === "textarea" ||
+      /^(textfield|input|select|checkbox|radio|switch|datepicker)$/.test(lower)
+    )
+      sig.input += 1;
+    else if (lower === "button" || /^(iconbutton|button)$/.test(lower)) sig.button += 1;
+    else if (lower === "a" || tag === "Link" || tag === "NavLink") sig.link += 1;
+    else if (lower === "img" || tag === "Image" || tag === "Avatar") sig.image += 1;
+    else if (/^h[1-6]$/.test(lower) || tag === "Heading" || tag === "Title") sig.heading += 1;
+    else if (lower === "ul" || lower === "ol" || tag === "List") sig.list += 1;
+    if (lower === "th") thCount += 1;
+  }
+  sig.columns = thCount;
+  // Repeated items: `.map(cb)` where the callback returns JSX (rows, cards, grid).
+  for (const call of fn.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    const callee = call.getExpression();
+    if (!Node.isPropertyAccessExpression(callee) || callee.getName() !== "map") continue;
+    const cb = call.getArguments()[0];
+    if (cb !== undefined && (Node.isArrowFunction(cb) || Node.isFunctionExpression(cb)) && returnsJsx(cb)) {
+      sig.repeated += 1;
+    }
+  }
+  return sig;
 }
 
 function extractRenderedComponents(fn: Node): string[] {
@@ -1089,6 +1152,7 @@ function scanClassComponents(
         props: [],
         renderedText: [],
         rendersComponents: [],
+        structure: emptyStructure(),
         flags: ["incomplete"],
       });
       continue;
@@ -1106,6 +1170,7 @@ function scanClassComponents(
         ...(localeTable !== null ? i18nRenderedText(render, localeTable) : []),
       ],
       rendersComponents: extractRenderedComponents(render),
+      structure: extractStructure(render),
     });
     collectInstanceSites(render, id, file, pendingInstances);
     // Whole class body: lifecycle fetches (componentDidMount etc.) + render events.

@@ -144,6 +144,10 @@
             "type": "string"
           },
           "description": "Names of components this component renders in its JSX (deduplicated)."
+        },
+        "structure": {
+          "$ref": "#/definitions/StructuralSignature",
+          "description": "Structural fingerprint of the rendered subtree (Phase 4.2)."
         }
       },
       "required": [
@@ -154,7 +158,8 @@
         "name",
         "props",
         "renderedText",
-        "rendersComponents"
+        "rendersComponents",
+        "structure"
       ],
       "additionalProperties": false,
       "description": "A React component definition — the code, not a usage."
@@ -222,6 +227,58 @@
       ],
       "additionalProperties": false,
       "description": "One piece of text a component can render, with its provenance."
+    },
+    "StructuralSignature": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "number"
+        },
+        "columns": {
+          "type": "number",
+          "description": "Column headers — the max `<th>` (or design-system column) count in a table."
+        },
+        "form": {
+          "type": "number"
+        },
+        "input": {
+          "type": "number"
+        },
+        "button": {
+          "type": "number"
+        },
+        "link": {
+          "type": "number"
+        },
+        "image": {
+          "type": "number"
+        },
+        "heading": {
+          "type": "number"
+        },
+        "list": {
+          "type": "number",
+          "description": "`<ul>`/`<ol>`/`<li>` groupings."
+        },
+        "repeated": {
+          "type": "number",
+          "description": "`.map(...)` JSX renders — repeated cards/rows/grid items."
+        }
+      },
+      "required": [
+        "table",
+        "columns",
+        "form",
+        "input",
+        "button",
+        "link",
+        "image",
+        "heading",
+        "list",
+        "repeated"
+      ],
+      "additionalProperties": false,
+      "description": "Counts of the structural elements a component renders — the signal for matching a screenshot with little or no static text (TRACKER step 4.2, failure modes A1/A3/A12). Raw DOM tags plus common design-system aliases (`<Table>`, `<TextField>`, …) are folded into these buckets."
     },
     "InstanceNode": {
       "type": "object",
