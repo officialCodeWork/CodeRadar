@@ -80,6 +80,42 @@ describe("action effects (b3 fixture, TRACKER 3.2)", () => {
   });
 });
 
+describe("form & non-JSX events (TRACKER 3.4, B7/B8)", () => {
+  const b8 = resolveHookEdges(scanReact({ root: path.join(fixtures, "b8-react-hook-form/app") }));
+  const b7 = resolveHookEdges(scanReact({ root: path.join(fixtures, "b7-effect-listeners/app") }));
+
+  const eventNamed = (graph: LineageGraph, event: string): LineageNode | undefined =>
+    graph.nodes.find((n) => n.kind === "event" && n.event === event);
+
+  it("react-hook-form: handleSubmit(onValid) unwraps to the real submit handler", () => {
+    const submit = eventNamed(b8, "onSubmit");
+    expect(submit?.kind === "event" ? submit.source : undefined).toBe("form");
+    expect(submit?.kind === "event" ? submit.handler : undefined).toBe("onValid");
+    const triggers = b8.edges.filter((e) => e.kind === "triggers" && e.from === submit?.id);
+    const ds = b8.nodes.find((n) => n.id === triggers[0]?.to);
+    expect(ds?.kind === "data-source" ? ds.endpoint : undefined).toBe("/api/signup");
+  });
+
+  it("addEventListener in an effect becomes an event sourced 'effect'", () => {
+    const key = eventNamed(b7, "keydown");
+    expect(key?.kind === "event" ? key.source : undefined).toBe("effect");
+    const triggers = b7.edges.some(
+      (e) => e.kind === "triggers" && e.from === key?.id && b7.nodes.find((n) => n.id === e.to)?.kind === "data-source",
+    );
+    expect(triggers).toBe(true);
+  });
+
+  it("a hotkey registration becomes an event keyed by its shortcut", () => {
+    const hotkey = eventNamed(b7, "ctrl+s");
+    expect(hotkey?.kind === "event" ? hotkey.source : undefined).toBe("hotkey");
+    const target = b7.edges
+      .filter((e) => e.kind === "triggers" && e.from === hotkey?.id)
+      .map((e) => b7.nodes.find((n) => n.id === e.to))
+      .find((n) => n?.kind === "data-source");
+    expect(target?.kind === "data-source" ? target.endpoint : undefined).toBe("/api/save");
+  });
+});
+
 describe("prop-drilled handlers still ground effects (b1 fixture, no regression)", () => {
   const b1 = resolveHookEdges(scanReact({ root: path.join(fixtures, "b1-prop-drilled-handler/app") }));
 

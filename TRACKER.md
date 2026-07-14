@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 3 — Journey graph
-- **Next step:** 3.4 — Form libraries & non-JSX events
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.3
+- **Next step:** 3.5 — Flag / role conditions (closes Gate 3)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.4
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000)
 
 ## What CodeRadar is
@@ -204,7 +204,7 @@ The heart of the project. C1 and B1 live here.
 - Returns `QueryResult<JourneyPath[]>`.
 **Accept:** fixture `b6-cyclic-journeys` (list ↔ detail loop): 3-level golden paths exact, terminates < 1 s; depth-n request on a cyclic graph never hangs.
 
-### [ ] 3.4 Form libraries & non-JSX events
+### [x] 3.4 Form libraries & non-JSX events
 **Failure modes:** B7, B8
 **Build:** react-hook-form / Formik adapters (`handleSubmit(onSubmit)` → real handler); `addEventListener` in `useEffect` → EventNode (`source: "effect"`); adapter list for hotkey libs. Unknown patterns → file-level `flags: ["unscanned-events"]`.
 **Accept:** fixtures `b8-react-hook-form`, `b7-effect-listeners` green.

@@ -1,0 +1,11 @@
+{
+  "failureMode": "B8",
+  "note": "react-hook-form: <form onSubmit={handleSubmit(onValid)}> — the real submit handler is the wrapped argument, not the handleSubmit() call. The onSubmit event is sourced 'form' and its handler onValid is mined for effects (POST /api/signup).",
+  "expect": {
+    "components": [{ "name": "SignupForm", "instances": 0 }],
+    "effects": [
+      { "component": "SignupForm", "event": "onSubmit", "effect": "triggers", "to": "/api/signup" }
+    ],
+    "queries": [{ "terms": ["Create your account"], "status": "ok", "top": "SignupForm" }]
+  }
+}

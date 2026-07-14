@@ -166,10 +166,17 @@ export interface StateNode extends BaseNode {
 /** A user or system event a component responds to. */
 export interface EventNode extends BaseNode {
   kind: "event";
-  /** e.g. "onClick", "onSubmit", "onChange" */
+  /** e.g. "onClick", "onSubmit", "onChange", or a DOM/hotkey key ("keydown", "ctrl+s"). */
   event: string;
   /** Name of the handler function, if resolvable. */
   handler: string | null;
+  /**
+   * Where the binding comes from (TRACKER step 3.4): a JSX on* prop (the
+   * default when absent), a form-library submit handler (react-hook-form's
+   * `handleSubmit`, Formik), an `addEventListener` inside an effect, or a
+   * hotkey-library registration (`useHotkeys`).
+   */
+  source?: "jsx" | "form" | "effect" | "hotkey";
 }
 
 /** Which routing system declared a route. */
