@@ -243,7 +243,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     version: 2,
     root,
     generatedAt: new Date().toISOString(),
-    generator: "@coderadar/parser-react@0.1.0",
+    generator: "ui-lineage@0.2.0",
     nodes: [...nodes.values()],
     edges,
   };
