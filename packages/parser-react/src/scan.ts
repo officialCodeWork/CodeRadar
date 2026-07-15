@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import {
@@ -152,7 +153,13 @@ export function scanReact(options: ScanOptions): LineageGraph {
   const baseUrls = options.baseUrls ?? [];
   const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
 
+  // Honor the scanned app's own tsconfig (6F.3, failure mode A5/C1): its
+  // baseUrl/paths make alias imports ("@ui") resolvable, which is the
+  // difference between linking an instance to its definition and dropping the
+  // usage entirely. File discovery stays ours (skipAddingFilesFromTsConfig).
+  const tsConfigFilePath = path.join(root, "tsconfig.json");
   const project = new Project({
+    ...(fs.existsSync(tsConfigFilePath) ? { tsConfigFilePath } : {}),
     compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
     skipAddingFilesFromTsConfig: true,
   });
@@ -1435,13 +1442,58 @@ function materializeInstances(
       return null; // imported from an unknown, unconfigured module — not ours
     }
 
-    // Same file first, then unique-name fallback across the project.
+    // Same file first, then a lazy-wrapper variable, then unique-name fallback.
     const resolvedName = resolveAlias(pending.tagName);
     const sameFile = nodeId("component", pending.file, resolvedName);
     if (nodes.has(sameFile)) return { definitionId: sameFile, external: false };
+    const lazy = lazyDefinition(sourceFile, pending.tagName);
+    if (lazy !== null) return lazy;
     const global = definitionsByName.get(resolvedName);
     return global !== undefined ? { definitionId: global, external: false } : null;
   };
+
+  /**
+   * <Users/> where Users = Loadable(lazy(() => import("./pages/UsersPage")))
+   * or React.lazy(() => import(...)): unwrap the wrapper chain to the dynamic
+   * import and resolve the target module's default export (6F.3 — the field
+   * app wrapped every page this way).
+   */
+  function lazyDefinition(
+    sourceFile: SourceFile,
+    tagName: string,
+  ): { definitionId: string; external: boolean } | null {
+    const variable = sourceFile.getVariableDeclaration(tagName);
+    const initializer = variable?.getInitializer();
+    if (initializer === undefined || !Node.isCallExpression(initializer)) return null;
+    const importCall = [initializer, ...initializer.getDescendantsOfKind(SyntaxKind.CallExpression)]
+      .find((call) => call.getExpression().getKind() === SyntaxKind.ImportKeyword);
+    const specifier = importCall?.getArguments()[0];
+    if (specifier === undefined || !Node.isStringLiteral(specifier)) return null;
+    // The compiler binds a resolvable specifier to its module symbol; fall
+    // back to relative resolution against the importing file for odd setups.
+    const target =
+      specifier.getSymbol()?.getDeclarations().find(Node.isSourceFile) ??
+      resolveRelativeModule(sourceFile, specifier.getLiteralText());
+    if (target === undefined) return null;
+    for (const declaration of target.getExportedDeclarations().get("default") ?? []) {
+      const declName = Node.hasName(declaration) ? declaration.getName() : undefined;
+      if (declName === undefined) continue;
+      const declFile = toPosix(path.relative(root, declaration.getSourceFile().getFilePath()));
+      const candidate = nodeId("component", declFile, resolveAlias(declName));
+      if (nodes.has(candidate)) return { definitionId: candidate, external: false };
+    }
+    return null;
+  }
+
+  function resolveRelativeModule(from: SourceFile, spec: string): SourceFile | undefined {
+    if (!spec.startsWith(".")) return undefined;
+    const base = path.join(path.dirname(from.getFilePath()), spec);
+    for (const suffix of [".tsx", ".ts", ".jsx", ".js", "/index.tsx", "/index.ts"]) {
+      const found = from.getProject().getSourceFile(`${base}${suffix}`);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
 
   const idByIndex: Array<string | null> = [];
   const created: InstanceNode[] = [];

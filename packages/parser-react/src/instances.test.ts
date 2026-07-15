@@ -56,3 +56,27 @@ describe("same-body nesting (parentInstanceId)", () => {
     expect(card?.kind === "instance" ? card.parentInstanceId : "missing").toBeNull();
   });
 });
+
+describe("field-pattern instance resolution (TRACKER 6F.3)", () => {
+  const fieldGraph = scanReact({ root: path.join(fixtures, "field-patterns/app") });
+  const fieldInstances = (name: string): InstanceNode[] =>
+    fieldGraph.nodes.flatMap((n) => (n.kind === "instance" && n.name === name ? [n] : []));
+
+  it("resolves a tsconfig-path alias import through a two-hop rename barrel", () => {
+    // UsersPage does `import { Grid } from "@ui"` — alias → components/index.ts
+    // (rename) → ui/index.ts → DataGrid. The field run dropped this usage.
+    const grids = fieldInstances("Grid");
+    expect(grids).toHaveLength(2);
+    for (const grid of grids) {
+      expect(grid.definitionId).toBe("component:components/ui/DataGrid.tsx#DataGrid");
+    }
+    expect(grids.some((i) => i.loc.file === "pages/UsersPage.tsx")).toBe(true);
+  });
+
+  it("unwraps Loadable(lazy(() => import())) variables to the page definition", () => {
+    // <Invoices/> where Invoices = Loadable(lazy(() => import("./InvoicesPage"))):
+    // the variable name differs from the definition, so only the unwrap links it.
+    const preview = fieldInstances("Invoices")[0];
+    expect(preview?.definitionId).toBe("component:pages/InvoicesPage.tsx#InvoicesPage");
+  });
+});
