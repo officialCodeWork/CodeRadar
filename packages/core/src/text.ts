@@ -21,12 +21,36 @@ export function normalizeText(input: string): string {
     .join(" ");
 }
 
+/** Minimum alphanumeric characters a match target must carry (failure mode A14). */
+const MIN_TARGET_SIGNAL = 2;
+
+/**
+ * True when a normalized string carries enough alphanumeric signal to act as a
+ * match target. Punctuation-only rendered text ("|", "/", "·") normalizes to
+ * "" — and an empty haystack is a substring of every query, so without this
+ * guard such targets match anything and the matcher degenerates into a
+ * universal wildcard (failure mode A14, field-found in v0.3.0). Pure-wildcard
+ * templates ("*" from a fully-dynamic expression) collapse to a match-everything
+ * regex the same way.
+ */
+export function hasMatchSignal(normalized: string): boolean {
+  let signal = 0;
+  for (const ch of normalized) {
+    if (ch === " " || ch === "*") continue;
+    signal += 1;
+    if (signal >= MIN_TARGET_SIGNAL) return true;
+  }
+  return false;
+}
+
 /**
  * Does `needle` (normalized) match `haystack` (normalized), where `haystack`
  * may contain `*` wildcards from template text ("* item in cart" matches
- * "3 items in cart")?
+ * "3 items in cart")? Targets below the minimum alphanumeric signal never
+ * match (A14).
  */
 export function textMatches(haystack: string, needle: string): boolean {
+  if (!hasMatchSignal(haystack)) return false;
   if (haystack.includes("*")) {
     const pattern = haystack
       .split("*")

@@ -4,9 +4,9 @@
 
 ## Status
 
-- **Current phase:** 6 — Lifecycle, scale, hardening
-- **Next step:** 6.1 (Phase 5 complete — Gate 5 passed, M5 reached)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7
+- **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
+- **Next step:** 6F.2 field-pattern eval fixture
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -340,6 +340,129 @@ The heart of the project. C1 and B1 live here.
 
 ---
 
+## Phase 6F — Field hardening (feedback round 1)
+
+Source: external validation of `ui-lineage@0.3.0` (MCP id `coderadar`) against a production
+React 18 + Redux Toolkit + RTK Query + MUI + React Router app (664 components, 1,982 instances,
+4,843 edges), 2026-07-15. Verdict: `trace_lineage`, determinism, out-of-domain decline, token
+budgeting all solid — but instance resolution hit 28%, RTK Query and object-config routes
+produced zero nodes, and a matcher bug made `find_component` non-discriminating, **all while
+every gate scores 1.000**. The eval suite has a fixture-vs-reality blind spot; this phase fixes
+the field defects and closes that blind spot. Prioritized ahead of 6.1–6.5.
+
+### [x] 6F.1 Punctuation-wildcard matcher fix + no-signal decline
+**Failure modes:** A14 (new — added to the catalog in this step), A4, D2, D6
+**Build:** rendered-text targets that normalize to empty (`|`, `/`, `:`, `-`) currently match
+every query — `find_component(["zzqwxnomatch12345"])` "matches rendered text", and every call
+returns the same ~20 punctuation-rendering components ranked only by the query's own character
+rarity. Fix in the matcher: discard rendered-text targets that normalize to empty; require a
+minimum alphanumeric token length before a rendered-text target can score. Add a `no-signal`
+decline: when the only surviving matches are empty/punctuation targets, return `declined`
+(reason `no-signal`) instead of `ambiguous` with a full candidate list.
+**Accept:** new fixture `a14-punctuation-wildcard` (components rendering bare `|` / `/` / `-`):
+gibberish query → `declined: no-signal`; a real query ranks the true component top-1 with
+punctuation components scoring 0; `resolveContext` no longer reports high confidence against
+punctuation-only matches.
+**Done:** root cause was `textMatches` (core text.ts): an empty haystack — rendered text like
+`|` normalizes to `""` — satisfies `needle.includes(haystack)` for every query, and a pure-`*`
+template collapses to a match-everything regex the same way. New `hasMatchSignal(normalized)`
+guard (≥ 2 alphanumeric chars, wildcards/spaces excluded) short-circuits `textMatches`, so
+punctuation-only and pure-wildcard targets never match anything; with no surviving targets,
+gibberish falls through to the existing `declined("no-signal")` path (no separate decline
+branch needed), and `resolveContext` inherits the fix through `matchComponents`. A14 added to
+docs/failure-modes.md. New fixture `a14-punctuation-wildcard` (Divider `|`, Breadcrumb `/` `-`,
+CalendarPanel): gibberish declines, a real term ranks CalendarPanel top-1 with no punctuation
+noise, gibberish mixed into a real query doesn't poison it. 8 new core unit tests; eval
+271/0/0, gate OK.
+
+### [ ] 6F.2 Field-pattern eval fixture
+**Failure modes:** D2 (the eval blind spot itself)
+**Build:** new fixture `eval/fixtures/field-patterns` mirroring the shapes the field app used
+and current fixtures miss: multi-hop aliased barrel chains (`index.ts` re-export → tsconfig
+`paths` alias → `export { X as Y }`), `Loadable(lazy(() => import()))` pages, an RTK Query
+store (`createApi` + `injectEndpoints` + `builder.query|mutation` split across files under
+`store/api/`), object-config `createBrowserRouter([...])` assembled from separate route files,
+and tests using a custom render wrapper. Goldens assert target behavior (resolution rate,
+data-source/route/coverage counts); checks owned by 6F.3–6F.6 land in an explicit skip list and
+are enabled by their steps, so `pnpm eval` stays green throughout.
+**Accept:** fixture scans clean; 6F.1 checks green; skip list names the step that must enable
+each remaining check.
+
+### [ ] 6F.3 Instance→definition resolution hardening
+**Failure modes:** A5, C1, F2, D4
+**Build:** the field run linked only 563/1,982 instances (28%) — barrel resolution passes unit
+tests but real chains break it. Extend import resolution: tsconfig `paths` aliases, multi-hop
+re-export chains, `export * from`, default-export renames, and
+`Loadable(lazy(() => import()))` / `React.lazy` wrappers. Unresolved instances keep the
+`incomplete` flag with the failing import path recorded as evidence.
+**Accept:** field-patterns fixture instance→definition resolution ≥ 95%; `blastRadius` on a
+shared component returns its true dependents (field regression: was 0); render graph connects
+route roots to leaf instances; enable the 6F.2 checks.
+
+### [ ] 6F.4 RTK Query extractor
+**Failure modes:** B2, C5, C6
+**Build:** `createApi` / `injectEndpoints` / `builder.query|mutation` are unrecognized today —
+0 data-source nodes across ~40 store files in the field run, so the entire server-cache
+dimension is invisible. Recognize API-slice endpoint definitions as `DataSourceNode`s (URL from
+the `query` builder, method, tags), link generated hooks (`useGetUsersQuery`) at component call
+sites → per-instance `fetches-from` edges, and model server-cache selectors
+(`useSelector` on the api reducer path) as `StateNode` reads.
+**Accept:** field-patterns fixture: every endpoint under `store/api/**` emits a data-source
+node; `traceLineage` from a component using a generated hook reaches its endpoint; enable the
+6F.2 checks.
+
+### [ ] 6F.5 Object-config React Router recognition
+**Failure modes:** B4, B3
+**Build:** step 3.1 covers `createBrowserRouter` on fixtures, but the field app produced 0
+route nodes — diagnose and close the gap: route-object arrays defined in separate
+files/variables (not inline at the call site), spread/composed arrays, `children` nesting,
+the `lazy:` route property, and `Loadable(lazy())` page `element`s. `routes-to` edges must
+survive the lazy wrapper (depends on 6F.3).
+**Accept:** field-patterns fixture: all golden routes emit `RouteNode`s; `journeys("/route")`
+returns a real multi-step path (field regression: was `declined: not-found`); enable the 6F.2
+checks.
+
+### [ ] 6F.6 Test-coverage detection hardening
+**Failure modes:** F3
+**Build:** the field run found 1 `covered-by` edge app-wide, making `untested` warnings
+near-universal noise. Handle custom render wrappers (`renderWithProviders(<X/>)` — resolve
+through to the JSX argument), test files importing through the same alias/barrel chains as
+6F.3, and suites living outside `__tests__`. When coverage mapping is still near-empty
+(< 5% of components covered), replace per-bundle `untested` warnings with a single graph-level
+`coverage-unmapped` note.
+**Accept:** field-patterns fixture: wrapped renders produce `covered-by` edges; a near-empty
+coverage graph emits `coverage-unmapped` instead of per-component `untested`; enable the 6F.2
+checks.
+
+### [ ] 6F.7 Scoring & result-surface polish
+**Failure modes:** A4, D2, D6
+**Build:** weight matches by term specificity against the candidate's own identifiers (name,
+props, file path), not global character rarity alone — gibberish must never outscore a real
+term (field: 6.50 for gibberish vs 6.09 for "calendar"). Expose a top-line `score` alongside
+`confidence` on every `find_component` / `resolve_context` candidate (currently nested and easy
+to misread) — core envelope, CLI output, MCP result schema.
+**Accept:** ranking fixture: identifier-specific terms beat rarity-only scores; `score` present
+at candidate top level across CLI + MCP (schemas regenerated, drift gate green).
+
+### [ ] 6F.8 Galaxy visualizer (`coderadar visualize`)
+**Failure modes:** — (user-requested feature, 2026-07-15)
+**Build:** new CLI command `visualize -g <graph.json> -o <out.html>` emitting a single
+self-contained HTML file (graph JSON + all JS/CSS inlined, zero network dependencies) that
+renders the lineage graph as a canvas force-directed "galaxy": node kinds color-coded
+(component / instance / hook / data-source / state / event / route / external), edges typed.
+Interactions: kind + edge-type filter toggles, search with fly-to, click → detail panel (name,
+file, loc, props) with neighborhood highlight (visual blast radius) and dim-others, zoom/pan,
+physics pause. Must stay responsive at field scale (~2.6k nodes / ~4.8k edges).
+**Accept:** generated from the demo-app graph: opens from `file://` with no external requests,
+all node kinds rendered and filterable; unit tests on generation (embedded JSON round-trips,
+output is self-contained); README section with a screenshot.
+
+**Gate 6F:** field-patterns fixture fully green (skip list empty) · instance resolution ≥ 95% ·
+RTK data sources > 0 · route nodes > 0 · gibberish queries decline `no-signal` · `pnpm eval`
+green end-to-end.
+
+---
+
 ## Phase 7 — Backend parsers & federation (v2 horizon)
 
 Sketch level — detail before starting the phase, after v1 feedback.
@@ -370,5 +493,6 @@ Sketch level — detail before starting the phase, after v1 feedback.
 | M3 | n-level journeys, lazily expanded | 3 |
 | M4 | Screenshot/text → ranked, calibrated, honest matches | 4 |
 | M5 ✅ | **Pluggable node:** ticket in → budgeted context bundle out, over MCP | 5 |
+| M6F | Field-hardened: v0.3.0 feedback closed — trustworthy matching + real-world extractors + visualizer | 6F |
 | M6 | Production-grade: incremental, fast, deterministic, versioned | 6 |
 | M7 | Full-stack lineage: pixel → backend handler | 7 |

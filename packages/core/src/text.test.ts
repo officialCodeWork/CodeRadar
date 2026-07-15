@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeText, textMatches } from "./text.js";
+import { hasMatchSignal, normalizeText, textMatches } from "./text.js";
 
 describe("normalizeText", () => {
   it("lowercases, strips punctuation, collapses whitespace", () => {
@@ -32,5 +32,31 @@ describe("textMatches", () => {
     expect(textMatches("* item in cart", "3 item in cart")).toBe(true);
     expect(textMatches("total *", "total 41 97")).toBe(true);
     expect(textMatches("* item in cart", "empty cart")).toBe(false);
+  });
+
+  it("never matches targets that normalize to empty or near-empty (A14)", () => {
+    // "|" / "/" / "-" normalize to "" — an empty haystack is a substring of
+    // every query, which turned the matcher into a universal wildcard.
+    expect(normalizeText("|")).toBe("");
+    expect(textMatches(normalizeText("|"), "zzqwxnomatch12345")).toBe(false);
+    expect(textMatches("", "calendar")).toBe(false);
+    expect(textMatches("*", "anything")).toBe(false); // pure wildcard → /.*/
+    expect(textMatches("x", "x ray")).toBe(false); // single char: below signal
+  });
+});
+
+describe("hasMatchSignal", () => {
+  it("rejects empty, punctuation-only, and pure-wildcard targets", () => {
+    expect(hasMatchSignal("")).toBe(false);
+    expect(hasMatchSignal(normalizeText("| / -"))).toBe(false);
+    expect(hasMatchSignal("*")).toBe(false);
+    expect(hasMatchSignal("* *")).toBe(false);
+    expect(hasMatchSignal("x")).toBe(false);
+  });
+
+  it("accepts real text, including wildcard templates", () => {
+    expect(hasMatchSignal("save")).toBe(true);
+    expect(hasMatchSignal("* item in cart")).toBe(true);
+    expect(hasMatchSignal("ok")).toBe(true);
   });
 });

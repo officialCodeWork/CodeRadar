@@ -1,0 +1,16 @@
+{
+  "failureMode": "A14",
+  "note": "Empty-normalizing rendered text (field-found in v0.3.0): components whose only static text is punctuation ('|', '/', '-') normalize to empty, and an empty target is a substring of every query — turning the matcher into a universal wildcard. Gibberish must decline no-signal instead of matching the punctuation components; a real term must rank the real component top-1 with no punctuation noise; gibberish mixed into a real query must not poison it.",
+  "expect": {
+    "components": [
+      { "name": "Breadcrumb", "instances": 0 },
+      { "name": "CalendarPanel", "instances": 0 },
+      { "name": "Divider", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["zzqwxnomatch12345"], "status": "declined" },
+      { "terms": ["Upcoming meetings"], "status": "ok", "top": "CalendarPanel" },
+      { "terms": ["zzqwxnomatch12345", "Upcoming meetings"], "status": "ok", "top": "CalendarPanel" }
+    ]
+  }
+}
