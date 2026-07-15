@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.2 field-pattern eval fixture
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1
+- **Next step:** 6F.3 instance→definition resolution hardening
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.2
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -375,7 +375,7 @@ CalendarPanel): gibberish declines, a real term ranks CalendarPanel top-1 with n
 noise, gibberish mixed into a real query doesn't poison it. 8 new core unit tests; eval
 271/0/0, gate OK.
 
-### [ ] 6F.2 Field-pattern eval fixture
+### [x] 6F.2 Field-pattern eval fixture
 **Failure modes:** D2 (the eval blind spot itself)
 **Build:** new fixture `eval/fixtures/field-patterns` mirroring the shapes the field app used
 and current fixtures miss: multi-hop aliased barrel chains (`index.ts` re-export → tsconfig
@@ -387,6 +387,23 @@ data-source/route/coverage counts); checks owned by 6F.3–6F.6 land in an expli
 are enabled by their steps, so `pnpm eval` stays green throughout.
 **Accept:** fixture scans clean; 6F.1 checks green; skip list names the step that must enable
 each remaining check.
+**Done:** new fixture `eval/fixtures/field-patterns` (11 app files): two-hop barrel + rename
+(`components/index.ts` → `ui/index.ts` → definition), `@ui`/`@store/*` tsconfig-path aliases,
+`Loadable(lazy(() => import()))` page elements, route arrays declared in `routes.tsx`,
+spread-composed, and passed to `createBrowserRouter` as an imported identifier, an RTK Query
+store (`createApi` base + two `injectEndpoints` slices with string-form and object-form
+`query` plus a `builder.mutation`), and a test rendering through a custom
+`renderWithProviders` wrapper. The harness's native xfail is the skip list: 9 target checks
+carry `expectedFail` naming the enabling step (6F.3: DataGrid instance count + blast radius ·
+6F.4: two endpoint attributions · 6F.5: three routes, one effect, one journey), and
+unexpected-pass gating removes stale marks the moment a capability lands. checks.ts change:
+xfail-marked attributions stay out of the lineage precision/recall tallies while marked, so a
+known-missing capability doesn't depress global metrics. Scanning the fixture confirmed the
+field diagnosis — the `@ui` alias import yields NO instance node for UsersPage's `<Grid/>`,
+and 0 route/data-source/hook nodes exist. Already working in this shape (kept as passing
+checks): relative two-hop barrel rename (InvoicesPage's Grid), covered-by through the custom
+wrapper — so 6F.6 must find the actual field-breaking coverage variant and extend the fixture.
+eval 280 pass / 0 fail / 9 xfail / 0 unexpected-pass, gate OK, all metrics 1.000.
 
 ### [ ] 6F.3 Instance→definition resolution hardening
 **Failure modes:** A5, C1, F2, D4

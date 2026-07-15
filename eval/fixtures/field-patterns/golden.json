@@ -1,0 +1,87 @@
+{
+  "failureMode": "D2",
+  "note": "Field-pattern regression fixture (6F.2): mirrors the shapes the 2026-07-15 ih-frontend validation run used where every gate scored 1.000 but the field run failed — tsconfig-path-alias barrel imports (@ui), Loadable(lazy(() => import())) page elements, route arrays composed in a separate file and passed to createBrowserRouter as an identifier, an RTK Query store (createApi/injectEndpoints/builder.query|mutation), and tests that render through a custom providers wrapper. Checks assert TARGET behavior; the ones the current scanner cannot satisfy are marked expectedFail with the step that must enable them (6F.3 aliases, 6F.4 RTK Query, 6F.5 object-config routes). xfail semantics remove stale marks automatically: once a step lands, its checks flip to unexpected-pass and gate until the marks are deleted. Verified working already in this shape: relative multi-hop barrel with rename (InvoicesPage's Grid), and covered-by detection through the custom render wrapper.",
+  "expect": {
+    "components": [
+      { "name": "HomePage", "instances": 0 },
+      { "name": "UsersPage", "instances": 0 },
+      { "name": "InvoicesPage", "instances": 0 },
+      {
+        "name": "DataGrid",
+        "instances": 2,
+        "expectedFail": "enabled by 6F.3 — the @ui tsconfig-path alias import leaves UsersPage's <Grid/> unresolved (no instance node at all today)"
+      },
+      { "name": "StatusBadge", "instances": 1 }
+    ],
+    "queries": [
+      { "terms": ["Team directory"], "status": "ok", "top": "UsersPage" },
+      { "terms": ["Invoice history"], "status": "ok", "top": "InvoicesPage" }
+    ],
+    "routes": [
+      {
+        "path": "/",
+        "component": "HomePage",
+        "layout": null,
+        "guards": [],
+        "expectedFail": "enabled by 6F.5 — createBrowserRouter(routes) with an imported identifier produces 0 route nodes today"
+      },
+      {
+        "path": "/users",
+        "component": "UsersPage",
+        "layout": null,
+        "guards": [],
+        "expectedFail": "enabled by 6F.5 — routes-to must survive the Loadable(lazy(() => import())) wrapper"
+      },
+      {
+        "path": "/invoices",
+        "component": "InvoicesPage",
+        "layout": null,
+        "guards": [],
+        "expectedFail": "enabled by 6F.5 — route comes from a spread of a separately-declared array"
+      }
+    ],
+    "effects": [
+      {
+        "component": "HomePage",
+        "event": "onClick",
+        "effect": "navigates-to",
+        "to": "/users",
+        "expectedFail": "enabled by 6F.5 — navigates-to needs the /users route node to exist"
+      }
+    ],
+    "journeys": [
+      {
+        "start": "/",
+        "expect": [{ "pages": ["/", "/users"], "end": "terminal" }],
+        "expectedFail": "enabled by 6F.5 — journeys from a path need route nodes (field regression: declined not-found)"
+      }
+    ],
+    "attributions": [
+      {
+        "component": "UsersPage",
+        "endpoints": ["/api/users"],
+        "expectedFail": "enabled by 6F.4 — createApi/injectEndpoints/builder.query are unrecognized; 0 data-source nodes today"
+      },
+      {
+        "component": "InvoicesPage",
+        "endpoints": ["/api/invoices"],
+        "expectedFail": "enabled by 6F.4 — injectEndpoints with an object-form query ({ url }) in a second api slice file"
+      }
+    ],
+    "blast": [
+      {
+        "node": "DataGrid",
+        "expect": [{ "node": "UsersPage" }],
+        "expectedFail": "enabled by 6F.3 — the shared-component blast radius misses UsersPage while its Grid instance is unresolved (field regression: 0 dependents)"
+      },
+      {
+        "node": "DataGrid",
+        "expect": [{ "node": "InvoicesPage" }]
+      }
+    ],
+    "coverage": [
+      { "component": "UsersPage", "tests": ["UsersPage.test"] },
+      { "component": "StatusBadge", "untested": true }
+    ]
+  }
+}
