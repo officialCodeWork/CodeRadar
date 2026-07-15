@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "ui-lineage": "dist/index.js"
+    "ui-lineage": "dist/index.js",
+    "ui-lineage-mcp": "dist/mcp.js"
   },
   "main": "dist/lib.js",
   "module": "dist/lib.js",
@@ -45,13 +46,16 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
     "commander": "^13.0.0",
     "ts-morph": "^24.0.0",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@coderadar/agent-sdk": "workspace:*",
     "@coderadar/core": "workspace:*",
+    "@coderadar/mcp": "workspace:*",
     "@coderadar/parser-react": "workspace:*",
     "@coderadar/vision": "workspace:*",
     "@types/node": "^22.20.1",
