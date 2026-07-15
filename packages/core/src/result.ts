@@ -19,6 +19,12 @@ export interface Candidate<T> {
   value: T;
   confidence: Confidence;
   evidence: Evidence[];
+  /**
+   * Raw ranking score, exposed top-level so agents don't misread the nested
+   * calibration score as match strength (6F.7). Larger is stronger; only
+   * comparable within one result. `confidence` stays the calibrated signal.
+   */
+  score?: number;
 }
 
 export interface QueryResult<T> {

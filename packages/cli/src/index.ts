@@ -313,6 +313,7 @@ function printMatchCandidate(candidate: Candidate<ComponentMatch>): void {
   const match = candidate.value;
   console.log(
     `${match.component.name}  (${match.component.loc.file}:${match.component.loc.line})  ` +
+      `score=${candidate.score?.toFixed(2) ?? "—"}  ` +
       `confidence=${candidate.confidence.level} (${candidate.confidence.score.toFixed(2)})`,
   );
   console.log(`  matched: ${match.matchedText.join(" | ")}`);
