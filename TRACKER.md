@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** ship **0.4.0** to the tester for a re-validation round; then 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — the fixture's custom-wrapper shape already passes; get a failing test file from the tester or ship the defensive `coverage-unmapped` half only)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.8 · **release 0.4.0 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.0.tgz verified, publish pending)
+- **Next step:** 6F.10 HTML-entity rendered-text noise (self-found on Grafana — `&nbsp;`→"nbsp", `&#34;`→"34" create spurious matches; decode/strip entities in the parser's text extraction, failure mode A16); then 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — Grafana produced 1,009 covered-by edges, so detection works on real code; the fixture's custom-wrapper shape already passes)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.9 · **released 0.4.0** (tag v0.4.0, PR #50 to main; publish to npm pending). **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -536,6 +536,35 @@ no external requests. CLI package gained a `test` script + vitest; 5 new tests (
 round-trips, dangling-edge drop, `</script>` breakout guard, self-contained assertions).
 README documents the command. eval unaffected (290/0/0/0). **Gate 6F extractor criteria met;
 only 6F.6 (coverage, data-blocked) remains before the gate fully closes.**
+
+### [x] 6F.9 Stopword & rare-literal scoring noise
+**Failure modes:** A15 (new), A4, D6
+**Build:** self-found while validating 0.4.0 on Grafana's frontend — `find "Find silences by
+matcher"` ranked `OrderBySection` (renders a bare `BY`) top-1 over `SilencesFilter`, because a
+lone stopword is a *rare literal* with high IDF; and `find "The"` returned confident matches on
+"the". New `isLowSignal(normalized)` in core/text.ts (extends the A14 `hasMatchSignal` guard):
+true when a string is empty, punctuation-only, or entirely stopwords (folded through
+`foldPlural` so it compares to normalized text). `matchComponents` now drops stopword-only query
+terms and skips stopword-only rendered-text targets, so the exact-phrase component wins and a
+stopword-only query declines `no-signal`.
+**Accept:** new fixture `a15-stopword-noise` (a `BY` component, an exact-phrase component, a
+`the`-rendering component): the phrase query ranks the exact-phrase component top-1; a stopword
+query declines; a stopword mixed with a real term ignores the stopword-rendering component.
+**Done:** implemented + 5 unit tests (2 text, 3 matcher) + fixture. **Verified on the real
+Grafana graph:** `Find silences by matcher` → `SilencesFilter` top-1 (`OrderBySection` gone),
+`The` → `no-signal`, and `resolve` on a stopword-heavy ticket went from confidently-wrong to an
+honest `no-signal`. eval 297/0/0/0, gate OK, all metrics 1.000. A16 (HTML-entity rendered text)
+spun out to 6F.10 — out of scope for a scoring PR.
+
+### [ ] 6F.10 HTML-entity rendered-text noise
+**Failure modes:** A16 (new)
+**Build:** self-found on Grafana — rendered text that is an HTML entity (`&nbsp;`, `&#34;`,
+`&gt;`) normalizes to a junk token (`nbsp`, `34`, `gt`); numeric entities make gibberish
+containing those digits match. Decode/strip HTML entities in the parser's text-extraction pass
+(parser-react), or treat entity-only rendered text as low-signal. Not a scoring fix — belongs in
+extraction, hence a separate step from 6F.9.
+**Accept:** fixture with entity-only rendered text: it produces no match target; gibberish that
+shares digits with a numeric entity declines. eval green.
 
 **Gate 6F:** field-patterns fixture fully green (skip list empty ✅) · instance resolution ≥ 95%
 (✅ 100%) · RTK data sources > 0 (✅) · route nodes > 0 (✅) · gibberish queries decline

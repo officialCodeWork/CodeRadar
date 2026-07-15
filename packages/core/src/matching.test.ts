@@ -227,3 +227,36 @@ describe("identifier affinity & top-line score (TRACKER 6F.7)", () => {
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
   });
 });
+
+describe("stopword & rare-literal noise (TRACKER 6F.9, A15)", () => {
+  // Grafana field-found: `find "Find silences by matcher"` ranked OrderBySection
+  // (renders bare "BY") top-1 over SilencesFilter, because "BY" is a rare
+  // literal with huge IDF; and `find "The"` matched components on "the".
+  const g = graph([
+    component("OrderBySection", ["BY"]),
+    component("SilencesFilter", ["Find silences by matcher"]),
+    component("AckPanel", ["acknowledge the following"]),
+  ]);
+
+  it("the exact-phrase component outranks a rare stopword literal", () => {
+    const result = matchComponentsByText(g, ["Find silences by matcher"]);
+    expect(result.candidates[0]?.value.component.name).toBe("SilencesFilter");
+    const names = result.candidates.map((c) => c.value.component.name);
+    expect(names).not.toContain("OrderBySection");
+  });
+
+  it("a stopword-only query declines no-signal", () => {
+    const result = matchComponentsByText(g, ["The"]);
+    expect(result.status).toBe("declined");
+    expect(result.declineReason).toBe("no-signal");
+  });
+
+  it("stopwords in a real query don't pull in stopword-rendering components", () => {
+    // Word-level terms as a ticket extractor produces them: "the" is dropped,
+    // "silences" resolves — AckPanel (renders "the") must not surface.
+    const result = matchComponentsByText(g, ["the", "silences"]);
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.value.component.name).toBe("SilencesFilter");
+    expect(result.candidates.map((c) => c.value.component.name)).not.toContain("AckPanel");
+  });
+});

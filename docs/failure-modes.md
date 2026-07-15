@@ -31,6 +31,8 @@ every downstream agent. When in doubt, return ranked candidates with evidence, o
 | A12 | **Non-text UI** — charts, icons, canvases | Nothing to text-match | Graceful degradation: structural candidates + explicit low confidence | 4 |
 | A13 | **Third-party embeds** — Intercom, iframes | Content isn't ours | Detect and report "not in this codebase" | 4 |
 | A14 | **Empty-normalizing rendered text** — components rendering bare `\|` / `/` / `-` | Normalization strips punctuation → empty target treated as a substring of every query; matcher becomes a universal wildcard (field-found in v0.3.0) | Discard targets that normalize to empty; minimum alphanumeric token length; `no-signal` decline when only such targets match | 6F |
+| A15 | **Stopword & rare-literal noise** — a component renders a bare `BY`; a ticket says "The …" | A stopword is a rare literal with high IDF, so it outranks the exact-phrase match; stopword-only queries return confident junk (field-found on Grafana 0.4.0) | Drop stopword-only query terms; reject stopword-only rendered-text targets (extends A14's low-signal guard) | 6F |
+| A16 | **HTML-entity rendered text** — a component renders `&nbsp;` / `&#34;` / `&gt;` | Entities normalize to junk tokens (`nbsp`, `34`, `gt`); numeric entities let gibberish sharing those digits match (self-found on Grafana 0.4.0) | Decode/strip HTML entities in the text-extraction pass, or treat entity-only rendered text as low-signal | 6F |
 
 ## B. User-journey extraction
 

@@ -14,7 +14,7 @@ import {
   ok,
   type QueryResult,
 } from "./result.js";
-import { fuzzyTokenMatch, normalizeText, textMatches, tokenize } from "./text.js";
+import { fuzzyTokenMatch, isLowSignal, normalizeText, textMatches, tokenize } from "./text.js";
 import type {
   ComponentNode,
   DataSourceNode,
@@ -128,7 +128,9 @@ export function matchComponents(
   graph: LineageGraph,
   query: MatchQuery,
 ): QueryResult<ComponentMatch> {
-  const queryTerms = (query.terms ?? []).map((t) => normalizeText(t)).filter((t) => t.length > 1);
+  const queryTerms = (query.terms ?? [])
+    .map((t) => normalizeText(t))
+    .filter((t) => t.length > 1 && !isLowSignal(t));
   const descriptor = query.structure;
   if (queryTerms.length === 0 && descriptor === undefined) return declined("no-signal");
 
@@ -162,7 +164,12 @@ export function matchComponents(
     const termTokens = tokenize(term);
     if (termTokens.length === 0) return null;
     for (const entry of component.renderedText) {
-      if (textMatches(normalizeText(entry.text), term)) return entry;
+      const normEntry = normalizeText(entry.text);
+      // A stopword-only / punctuation-only entry ("BY", "|") is not a real
+      // target: it matches too much and, being a rare literal, its high IDF
+      // would let it outrank an exact-phrase match (A14/A15).
+      if (isLowSignal(normEntry)) continue;
+      if (textMatches(normEntry, term)) return entry;
       if (containsPhrase(tokenize(entry.text), termTokens)) return entry;
     }
     return null;
