@@ -188,7 +188,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
   /** Event node id → the handler expressions it wires, mined for effects (3.2). */
   const handlerExprs = new Map<string, Node[]>();
 
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
     // Test files are swept separately (5.4) — they exercise components, they
     // don't define the app's UI, so they must not produce component/hook nodes.
@@ -272,13 +272,43 @@ export function scanReact(options: ScanOptions): LineageGraph {
     root,
     generatedAt: new Date().toISOString(),
     generator: "ui-lineage@0.4.1",
-    nodes: [...nodes.values()],
-    edges,
+    // Canonical output order (6.3, G8): sort nodes and edges by stable keys so
+    // the serialized graph is byte-identical across runs and machines. Node ids
+    // are unique; edges are keyed by every identifying field. The query side
+    // addresses nodes by id, so array order carries no semantics — only
+    // reproducibility.
+    nodes: [...nodes.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    edges: edges.sort((a, b) => {
+      const ka = edgeSortKey(a);
+      const kb = edgeSortKey(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    }),
   };
+}
+
+/** Total-order key over an edge's identifying fields (6.3, G8). */
+function edgeSortKey(e: LineageEdge): string {
+  return [e.kind, e.from, e.to, e.via ?? "", e.condition?.kind ?? "", e.condition?.expression ?? ""].join(
+    " ",
+  );
 }
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
+}
+
+/**
+ * Source files in a stable path order (6.3, G8). ts-morph returns files in glob
+ * enumeration order, which varies across platforms and filesystems; every pass
+ * that builds nodes/edges must iterate deterministically so two scans of the
+ * same tree agree byte-for-byte.
+ */
+function sortedSourceFiles(project: Project): SourceFile[] {
+  return [...project.getSourceFiles()].sort((a, b) => {
+    const pa = a.getFilePath();
+    const pb = b.getFilePath();
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
+  });
 }
 
 /** Spread helper: emit a `responseType` field only when one was recovered (5.5). */
@@ -1093,7 +1123,7 @@ function detectStores(
   };
 
   // Pass 1: slices, zustand stores, thunks.
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
     for (const variable of sourceFile.getVariableDeclarations()) {
       const init = variable.getInitializer();
@@ -1167,7 +1197,7 @@ function detectStores(
   }
 
   // Pass 2: thunk → slice associations via extraReducers addCase(thunk.fulfilled).
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     for (const access of sourceFile.getDescendantsOfKind(SyntaxKind.PropertyAccessExpression)) {
       if (!["fulfilled", "rejected", "pending"].includes(access.getName())) continue;
       const thunkName = access.getExpression().getText();
@@ -2268,14 +2298,30 @@ export function resolveHookEdges(graph: LineageGraph): LineageGraph {
     if (node.kind === "hook") hooksByName.set(node.name, node.id);
   }
   const edges: LineageEdge[] = [];
+  const seen = new Set<string>();
+  const push = (edge: LineageEdge): void => {
+    // Rewriting placeholders can collide two edges onto the same hook id;
+    // dedup by full key so the result stays canonical (6.3, G8).
+    const key = edgeSortKey(edge);
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
   for (const edge of graph.edges) {
     if (edge.to.startsWith("unresolved-hook:")) {
       const target = hooksByName.get(edge.to.slice("unresolved-hook:".length));
-      if (target !== undefined) edges.push({ ...edge, to: target });
+      if (target !== undefined) push({ ...edge, to: target });
       // Unknown hooks (from libraries we don't model) are dropped.
     } else {
-      edges.push(edge);
+      push(edge);
     }
   }
+  // Rewritten `to` values may no longer be in the canonical order scanReact
+  // produced, so re-sort here — this is the graph the CLI and eval serialize.
+  edges.sort((a, b) => {
+    const ka = edgeSortKey(a);
+    const kb = edgeSortKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
   return { ...graph, edges };
 }

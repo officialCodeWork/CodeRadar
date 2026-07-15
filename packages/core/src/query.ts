@@ -360,7 +360,10 @@ export function matchComponents(
     (a, b) =>
       b.score - a.score ||
       subtreeSize(a) - subtreeSize(b) ||
-      a.match.component.name.localeCompare(b.match.component.name),
+      a.match.component.name.localeCompare(b.match.component.name) ||
+      // Final tiebreak on the unique id so same-named components in different
+      // files rank deterministically (6.3, G8) rather than by scan order.
+      a.match.component.id.localeCompare(b.match.component.id),
   );
   const collapsed = new Set<string>();
   for (const s of scored) {

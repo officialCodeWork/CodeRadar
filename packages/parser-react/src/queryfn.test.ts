@@ -32,8 +32,12 @@ describe("queryFn following (c5 fixture)", () => {
   });
 
   it("resolves inline arrow queryFns", () => {
-    const stats = sources.find((s) => s.endpoint === "/api/stats");
-    expect(stats?.sourceKind).toBe("react-query");
+    // The inline arrow queryFn (`() => fetch("/api/stats")`) yields both a
+    // react-query source at the hook call site and the raw fetch it wraps, so
+    // assert the react-query resolution exists rather than depending on which
+    // node the canonical ordering (6.3) surfaces first.
+    const stats = sources.filter((s) => s.endpoint === "/api/stats");
+    expect(stats.some((s) => s.sourceKind === "react-query")).toBe(true);
   });
 
   it("never reports a query key as the endpoint", () => {
