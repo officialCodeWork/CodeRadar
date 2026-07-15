@@ -98,6 +98,13 @@ export interface MatchQuery {
 
 /** Weight of a full structural match relative to a rare matched term. */
 const STRUCTURE_WEIGHT = 3;
+/**
+ * Multiplier when a matched term also names the component itself — its name,
+ * props, or file (6F.7). "calendar" matching CalendarPanel outranks the same
+ * text rendered incidentally elsewhere; global character rarity alone can't
+ * tell them apart.
+ */
+const IDENTIFIER_AFFINITY = 1.5;
 /** A glossary alias hit outweighs any text/structure evidence (Phase 4.6). */
 const ALIAS_WEIGHT = 10;
 /** A recorded human correction is the strongest signal of all. */
@@ -170,6 +177,28 @@ export function matchComponents(
     return base * (boosts.get(term) ?? 1);
   };
 
+  // A component's own identifiers — name, props, file basename — split on
+  // camelCase and separators. Terms that also NAME the component score higher
+  // than the same text rendered incidentally elsewhere (6F.7).
+  const identifierMemo = new Map<string, Set<string>>();
+  const identifierTokens = (component: ComponentNode): Set<string> => {
+    const cached = identifierMemo.get(component.id);
+    if (cached) return cached;
+    const camelSplit = (s: string): string => s.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+    const basename = component.loc.file.split("/").pop()?.replace(/\.[a-z]+$/i, "") ?? "";
+    const out = new Set(
+      tokenize(
+        [component.name, ...component.props, basename].map(camelSplit).join(" "),
+      ),
+    );
+    identifierMemo.set(component.id, out);
+    return out;
+  };
+  const namesComponent = (term: string, component: ComponentNode): boolean => {
+    const ids = identifierTokens(component);
+    return tokenize(term).some((t) => ids.has(t) || [...ids].some((id) => fuzzyTokenMatch(id, t)));
+  };
+
   // Glossary aliases + recorded corrections (Phase 4.6). Both are authority
   // signals — a phrase resolves even when it appears nowhere in the code.
   const aliasEntries = Object.entries(query.aliases ?? {});
@@ -233,7 +262,8 @@ export function matchComponents(
         }
       }
       if (hit === null) continue;
-      const w = termWeight(term);
+      const affine = namesComponent(term, component);
+      const w = termWeight(term) * (affine ? IDENTIFIER_AFFINITY : 1);
       covered.add(term);
       if (where.id === component.id) matched.push(term);
       weight += w;
@@ -247,7 +277,9 @@ export function matchComponents(
               : "";
       evidence.push({
         kind: "text-match",
-        detail: `"${term}" matched rendered text "${hit.text}"${provenance} — rarity weight ${w.toFixed(2)}`,
+        detail:
+          `"${term}" matched rendered text "${hit.text}"${provenance} — rarity weight ${w.toFixed(2)}` +
+          (affine ? " (also names the component)" : ""),
         loc: where.loc,
       });
     }
@@ -347,7 +379,7 @@ export function matchComponents(
       s.covered.size === 0 && conf.level === "high"
         ? { score: conf.score, level: "medium" as const }
         : conf;
-    return { value: s.match, confidence, evidence: s.evidence };
+    return { value: s.match, confidence, evidence: s.evidence, score: s.score };
   });
 
   const top = winners[0];

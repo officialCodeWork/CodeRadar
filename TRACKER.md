@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.6 test-coverage detection hardening (needs the field's actual failing variant) · 6F.7 scoring polish · 6F.8 visualizer
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5
+- **Next step:** 6F.8 galaxy visualizer · 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — fixture's wrapper shape already passes)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -489,7 +489,7 @@ through to the JSX argument), test files importing through the same alias/barrel
 coverage graph emits `coverage-unmapped` instead of per-component `untested`; enable the 6F.2
 checks.
 
-### [ ] 6F.7 Scoring & result-surface polish
+### [x] 6F.7 Scoring & result-surface polish
 **Failure modes:** A4, D2, D6
 **Build:** weight matches by term specificity against the candidate's own identifiers (name,
 props, file path), not global character rarity alone — gibberish must never outscore a real
@@ -498,6 +498,15 @@ term (field: 6.50 for gibberish vs 6.09 for "calendar"). Expose a top-line `scor
 to misread) — core envelope, CLI output, MCP result schema.
 **Accept:** ranking fixture: identifier-specific terms beat rarity-only scores; `score` present
 at candidate top level across CLI + MCP (schemas regenerated, drift gate green).
+**Done:** `matchComponents` applies `IDENTIFIER_AFFINITY` (×1.5) to a matched term that also
+names the candidate — its name, props, or file basename, camelCase-split and tokenized
+(memoized per component, fuzzy-tolerant) — with the evidence line noting "(also names the
+component)". Genuinely-tied generic terms stay tied, so ambiguity honesty is unchanged
+(1.000). `Candidate` gains an optional top-level `score` (raw ranking score, larger = stronger
+within one result; `confidence` stays the calibrated signal) set by `matchComponents` and
+printed by the CLI (`score=… confidence=…`); MCP inherits it through the envelope JSON.
+Candidate isn't part of the generated schemas, so no schema change (drift gate confirms).
+2 new core tests (211 total); eval 290/0/0/0, gate OK, metrics 1.000.
 
 ### [ ] 6F.8 Galaxy visualizer (`coderadar visualize`)
 **Failure modes:** — (user-requested feature, 2026-07-15)

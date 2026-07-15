@@ -202,3 +202,28 @@ describe("empty-normalizing rendered text is never a wildcard (TRACKER 6F.1, A14
     expect(result.candidates[0]?.value.component.name).toBe("CalendarPanel");
   });
 });
+
+describe("identifier affinity & top-line score (TRACKER 6F.7)", () => {
+  // "Calendar" is rendered by both, but only CalendarPanel is NAMED for it —
+  // global character rarity alone can't tell these apart (field complaint).
+  const g = graph([
+    component("CalendarPanel", ["Calendar", "Upcoming meetings"]),
+    component("Dashboard", ["Calendar", "Revenue overview"]),
+  ]);
+
+  it("a term that also names the component beats the same text elsewhere", () => {
+    const result = matchComponentsByText(g, ["Calendar"]);
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.value.component.name).toBe("CalendarPanel");
+    expect(
+      result.candidates[0]?.evidence.some((e) => e.detail.includes("also names the component")),
+    ).toBe(true);
+  });
+
+  it("exposes the raw ranking score at the candidate top level, best-first", () => {
+    const result = matchComponentsByText(g, ["Calendar"]);
+    const scores = result.candidates.map((c) => c.score ?? 0);
+    expect(scores[0]).toBeGreaterThan(0);
+    expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+  });
+});
