@@ -113,6 +113,15 @@ Turn a screenshot into `{ terms, structure, annotations }` and match it — term
 
 Endpoints (constants, templates, API wrappers, react-query/SWR), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
 
+## New in 0.4.1
+
+Second field-hardening round, validated by self-running against **Grafana's frontend** (6,461 files → 15,334-node graph in 72 s: 55 RTK-query data sources, 32 routes, 1,009 test-coverage edges):
+
+- **Stopword & rare-literal scoring** — a component rendering a bare `BY` (a rare literal with high IDF) no longer outranks the component that renders the whole phrase; stopword-only queries decline `no-signal`.
+- **HTML-entity rendered text** — `&nbsp;` / `&#34;` / `&gt;` are decoded during extraction (as React does), so they stop producing junk match tokens and false matches.
+- **`coverage-unmapped` note** — when test files exist but almost none map to a component, bundles emit one honest graph-level note instead of a near-universal false `untested`.
+- **`visualize`** — self-contained interactive HTML galaxy of the whole graph (`ui-lineage visualize -g app.graph.json -o app.galaxy.html`), responsive at 15k+ nodes.
+
 ## New in 0.4.0
 
 Field-hardening from real-codebase validation (React 18 · Redux Toolkit · RTK Query · MUI · React Router):
