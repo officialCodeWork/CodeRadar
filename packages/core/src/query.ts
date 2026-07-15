@@ -19,6 +19,7 @@ import type {
   ComponentNode,
   DataSourceNode,
   EdgeCondition,
+  EdgeKind,
   EventNode,
   Evidence,
   InstanceNode,
@@ -797,4 +798,123 @@ function groupInstances(graph: LineageGraph): Map<string, InstanceNode[]> {
     else byDefinition.set(node.definitionId, [node]);
   }
   return byDefinition;
+}
+
+/** One node affected by changing the blast-radius target, with the hop that reaches it. */
+export interface ImpactNode {
+  node: LineageNode;
+  /** The edge kind connecting this node to its (closer) dependency on the path. */
+  relation: EdgeKind;
+  /** Reverse-dependency hops from the target (1 = a direct dependent). */
+  distance: number;
+}
+
+export interface BlastRadiusOptions {
+  /** Maximum dependency hops to follow. Default Infinity (whole component). */
+  depth?: number;
+}
+
+/**
+ * For each edge, decide which endpoint is the *resource* and which *depends on*
+ * it, so we can walk "who is affected if I change X" regardless of edge
+ * direction. Journey edges (handles/triggers/navigates-to/exits-app/enters-at)
+ * are behaviour, not data/render dependencies, so they don't propagate impact.
+ */
+function dependencyOf(edge: LineageEdge): { resource: string; dependent: string } | null {
+  switch (edge.kind) {
+    // consumer --edge--> resource: the `from` depends on the `to`.
+    case "instance-of": // instance depends on its definition
+    case "renders": // a parent's render depends on the child instance
+    case "fetches-from": // a component/hook depends on the data source it calls
+    case "reads-state": // a reader depends on the state slice
+    case "uses-hook": // a component depends on the hook
+    case "routes-to": // a route depends on the page it renders
+      return { resource: edge.to, dependent: edge.from };
+    // resource --edge--> consumer: the `to` depends on the `from`.
+    case "provides-data": // a fed instance depends on the data source
+    case "writes-state": // the written state depends on its writer
+      return { resource: edge.from, dependent: edge.to };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Blast radius (TRACKER step 5.3, failure mode F2): everything that *depends on*
+ * a node, so a change to it can be reviewed for impact. A reverse-dependency BFS
+ * — changing a component definition surfaces its instances and the pages that
+ * render them; changing a data source surfaces every consumer, the instances it
+ * feeds, and the state it writes (and their readers).
+ *
+ * `target` is a node id, a component name, a data-source endpoint, a state name,
+ * or a route path. Returns one candidate whose value is the affected nodes,
+ * ordered nearest-first.
+ */
+export function blastRadius(
+  graph: LineageGraph,
+  target: string,
+  options: BlastRadiusOptions = {},
+): QueryResult<ImpactNode[]> {
+  const depth = options.depth ?? Number.POSITIVE_INFINITY;
+  const byId = new Map<string, LineageNode>(graph.nodes.map((n) => [n.id, n]));
+  const start =
+    byId.get(target) ??
+    graph.nodes.find((n) => n.kind === "component" && n.name === target) ??
+    graph.nodes.find((n) => n.kind === "data-source" && n.endpoint === target) ??
+    graph.nodes.find((n) => n.kind === "state" && n.name === target) ??
+    graph.nodes.find((n) => n.kind === "route" && n.path === target);
+  if (start === undefined) return declined("not-found");
+
+  // resource id -> its direct dependents (and the edge that makes them depend).
+  const dependents = new Map<string, { id: string; relation: EdgeKind }[]>();
+  for (const edge of graph.edges) {
+    const dep = dependencyOf(edge);
+    if (dep === null) continue;
+    const list = dependents.get(dep.resource);
+    if (list) list.push({ id: dep.dependent, relation: edge.kind });
+    else dependents.set(dep.resource, [{ id: dep.dependent, relation: edge.kind }]);
+  }
+
+  const seen = new Set<string>([start.id]);
+  const queue: { id: string; distance: number }[] = [{ id: start.id, distance: 0 }];
+  const impacts: ImpactNode[] = [];
+  while (queue.length > 0) {
+    const { id, distance } = queue.shift() as { id: string; distance: number };
+    if (distance >= depth) continue;
+    for (const { id: dependentId, relation } of dependents.get(id) ?? []) {
+      if (seen.has(dependentId)) continue;
+      seen.add(dependentId);
+      const node = byId.get(dependentId);
+      if (node === undefined) continue;
+      impacts.push({ node, relation, distance: distance + 1 });
+      queue.push({ id: dependentId, distance: distance + 1 });
+    }
+  }
+  impacts.sort((a, b) => a.distance - b.distance);
+
+  const evidence: Evidence[] = [
+    {
+      kind: "edge-chain",
+      detail: `${impacts.length} node(s) depend on ${start.kind} ${labelOf(start)}`,
+      loc: start.loc,
+    },
+  ];
+  return ok([{ value: impacts, confidence: confidenceFromScore(1), evidence }]);
+}
+
+function labelOf(node: LineageNode): string {
+  switch (node.kind) {
+    case "component":
+    case "hook":
+    case "state":
+      return node.name;
+    case "event":
+      return node.handler ?? node.event;
+    case "data-source":
+      return node.endpoint;
+    case "route":
+      return node.path;
+    default:
+      return node.id;
+  }
 }

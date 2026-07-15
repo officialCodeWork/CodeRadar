@@ -10,9 +10,12 @@
  * trim is recorded in `warnings`.
  */
 import {
+  blastRadius,
+  type ImpactNode,
   type JourneyPath,
   journeys,
   type LineageGraph,
+  type LineageNode,
   traceLineage,
 } from "@coderadar/core";
 
@@ -152,6 +155,14 @@ export function buildBundle(
       });
     }
     bundle.journeys = journeys(graph, top.component.name, { depth }).candidates[0]?.value ?? [];
+
+    const impacts = blastRadius(graph, top.component.id).candidates[0]?.value ?? [];
+    const byId = new Map<string, LineageNode>(graph.nodes.map((n) => [n.id, n]));
+    bundle.blastRadius = impacts.map((impact) => ({
+      node: impactLabel(impact, byId),
+      relation: impact.relation,
+      distance: impact.distance,
+    }));
   }
 
   if (graph.meta?.dirty === true) {
@@ -161,6 +172,25 @@ export function buildBundle(
   if (incomplete > 0) bundle.warnings.push(`${incomplete} node(s) could not be fully parsed`);
 
   return trimToBudget(bundle, budgetTokens);
+}
+
+/** A compact, agent-readable name for one impacted node, with its source location. */
+function impactLabel(impact: ImpactNode, byId: Map<string, LineageNode>): string {
+  const node = impact.node;
+  const where = `${node.loc.file}:${node.loc.line}`;
+  if (node.kind === "instance") {
+    const defName = byId.get(node.definitionId)?.name ?? "?";
+    return `${defName}@${where}`;
+  }
+  const name =
+    node.kind === "data-source"
+      ? node.endpoint
+      : node.kind === "route"
+        ? node.path
+        : node.kind === "event"
+          ? (node.handler ?? node.event)
+          : node.name;
+  return `${node.kind} ${name} (${where})`;
 }
 
 function trimToBudget(bundle: ContextBundle, budgetTokens: number): ContextBundle {

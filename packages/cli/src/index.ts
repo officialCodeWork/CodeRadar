@@ -3,9 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  blastRadius,
   type Candidate,
   collectGraphMeta,
   type ComponentMatch,
+  type ImpactNode,
   type JourneyPath,
   journeys,
   type LineageGraph,
@@ -224,6 +226,34 @@ program
   });
 
 program
+  .command("impact")
+  .description("Blast radius: everything that depends on a node (reverse traversal)")
+  .argument("<node>", "node id, component name, API endpoint, state name, or route path")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
+  .option("-d, --depth <n>", "max dependency hops", "0")
+  .action((node: string, opts: { graph: string; depth: string }) => {
+    const graph = loadGraph(opts.graph);
+    const depth = Number.parseInt(opts.depth, 10);
+    const result = blastRadius(
+      graph,
+      node,
+      depth > 0 ? { depth } : {},
+    );
+    if (result.status === "declined" || result.candidates[0] === undefined) {
+      console.error(`Node not found: ${node} (${result.declineReason ?? "no result"}).`);
+      process.exitCode = 1;
+      return;
+    }
+    const impacts = result.candidates[0].value;
+    if (impacts.length === 0) {
+      console.log(`Nothing depends on ${node}.`);
+      return;
+    }
+    console.log(`${impacts.length} node(s) affected by changing ${node}:\n`);
+    for (const impact of impacts) printImpact(impact);
+  });
+
+program
   .command("correct")
   .description("Record that some on-screen text means a component — feeds future `find` results")
   .argument("<component>", "component name it should resolve to")
@@ -253,6 +283,22 @@ function printJourneyPath(path: JourneyPath): void {
   });
   const tag = path.end === "cycle" ? "  ↩ cycle" : path.end === "depth-limit" ? "  … (depth limit)" : "";
   console.log(`  ${parts.join("  ")}${tag}`);
+}
+
+function printImpact(impact: ImpactNode): void {
+  const node = impact.node;
+  const name =
+    node.kind === "data-source"
+      ? node.endpoint
+      : node.kind === "route"
+        ? node.path
+        : node.kind === "event"
+          ? (node.handler ?? node.event)
+          : node.name;
+  const indent = "  ".repeat(impact.distance);
+  console.log(
+    `${indent}[${impact.relation}] ${node.kind} ${name}  (${node.loc.file}:${node.loc.line})`,
+  );
 }
 
 function printMatchCandidate(candidate: Candidate<ComponentMatch>): void {

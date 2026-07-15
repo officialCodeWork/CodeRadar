@@ -1,8 +1,10 @@
 /** Run one fixture's golden checks against its scanned graph. */
 
 import {
+  blastRadius,
   journeys,
   type LineageGraph,
+  type LineageNode,
   matchComponents,
   traceLineage,
 } from "@coderadar/core";
@@ -261,6 +263,54 @@ export function runChecks(
       expected.expectedFail,
       matched ? undefined : `no ${expected.kind}-app edge for ${expected.host}`,
     );
+  }
+
+  const impactName = (n: LineageNode): string =>
+    n.kind === "instance"
+      ? (graph.nodes.find((d) => d.id === n.definitionId)?.name ?? "")
+      : n.kind === "data-source"
+        ? n.endpoint
+        : n.kind === "route"
+          ? n.path
+          : n.kind === "event"
+            ? (n.handler ?? n.event)
+            : n.name;
+
+  for (const spec of golden.expect.blast ?? []) {
+    const result = blastRadius(graph, spec.node);
+    const impacts = result.candidates[0]?.value ?? [];
+    for (const want of spec.expect) {
+      const id = `blast:${spec.node}=>${want.node}${want.at ? `@${want.at}` : ""}${want.distance !== undefined ? `[${want.distance}]` : ""}`;
+      const found = impacts.find(
+        (im) =>
+          impactName(im.node) === want.node &&
+          (want.kind === undefined || im.node.kind === want.kind) &&
+          (want.at === undefined || im.node.loc.file.includes(want.at)) &&
+          (want.distance === undefined || im.distance === want.distance),
+      );
+      finalize(
+        "blast",
+        id,
+        result.status === "ok" && found !== undefined,
+        spec.expectedFail,
+        result.status !== "ok"
+          ? `blastRadius(${spec.node}) returned ${result.status}`
+          : found === undefined
+            ? `no impact ${want.node}${want.at ? ` at ${want.at}` : ""}${want.distance !== undefined ? ` at distance ${want.distance}` : ""}`
+            : undefined,
+      );
+    }
+    // Over-reach guard: forbidden nodes never gate as xfail — a leak is always a failure.
+    for (const forbidden of spec.forbidden ?? []) {
+      const leaked = impacts.some((im) => impactName(im.node) === forbidden);
+      finalize(
+        "blast",
+        `blast:${spec.node}!=>${forbidden}`,
+        !leaked,
+        undefined,
+        leaked ? `over-reach: ${forbidden} appeared in the blast radius of ${spec.node}` : undefined,
+      );
+    }
   }
 
   for (const query of golden.expect.queries ?? []) {
