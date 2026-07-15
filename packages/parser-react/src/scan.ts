@@ -30,6 +30,7 @@ import {
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { detectRoutes } from "./routes.js";
+import { detectTests, isTestFile } from "./tests.js";
 import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
 
 export interface ScanOptions {
@@ -172,6 +173,9 @@ export function scanReact(options: ScanOptions): LineageGraph {
 
   for (const sourceFile of project.getSourceFiles()) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
+    // Test files are swept separately (5.4) — they exercise components, they
+    // don't define the app's UI, so they must not produce component/hook nodes.
+    if (isTestFile(file)) continue;
     for (const decl of collectDeclarations(sourceFile, file)) {
       const isComponent = COMPONENT_NAME.test(decl.name) && returnsJsx(decl.fn);
       const isHook = HOOK_NAME.test(decl.name);
@@ -238,6 +242,8 @@ export function scanReact(options: ScanOptions): LineageGraph {
     handlerExprs,
     root,
   );
+  // Tests last: components must exist before we can attach coverage to them.
+  detectTests(project, root, nodes, addEdge);
 
   return {
     version: 2,

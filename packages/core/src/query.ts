@@ -833,6 +833,7 @@ function dependencyOf(edge: LineageEdge): { resource: string; dependent: string 
     // resource --edge--> consumer: the `to` depends on the `from`.
     case "provides-data": // a fed instance depends on the data source
     case "writes-state": // the written state depends on its writer
+    case "covered-by": // a test depends on the component it renders
       return { resource: edge.from, dependent: edge.to };
     default:
       return null;

@@ -163,6 +163,19 @@ export function buildBundle(
       relation: impact.relation,
       distance: impact.distance,
     }));
+
+    // Test coverage (5.4): tests over the matched component and its render subtree.
+    const subtree = componentSubtree(graph, top.component.id);
+    const testFiles = new Set<string>();
+    let topCovered = false;
+    for (const edge of graph.edges) {
+      if (edge.kind !== "covered-by" || !subtree.has(edge.from)) continue;
+      if (edge.from === top.component.id) topCovered = true;
+      const test = byId.get(edge.to);
+      if (test !== undefined) testFiles.add(test.loc.file);
+    }
+    bundle.tests = [...testFiles].sort().map((file) => ({ file }));
+    if (!topCovered) bundle.warnings.push(`untested — no test renders ${top.component.name}`);
   }
 
   if (graph.meta?.dirty === true) {
@@ -172,6 +185,34 @@ export function buildBundle(
   if (incomplete > 0) bundle.warnings.push(`${incomplete} node(s) could not be fully parsed`);
 
   return trimToBudget(bundle, budgetTokens);
+}
+
+/** Component ids in the render subtree of `rootId` (itself plus renders → instance-of descendants). */
+function componentSubtree(graph: LineageGraph, rootId: string): Set<string> {
+  const rendersFrom = new Map<string, string[]>();
+  const definitionOf = new Map<string, string>();
+  for (const edge of graph.edges) {
+    if (edge.kind === "renders") {
+      const list = rendersFrom.get(edge.from);
+      if (list) list.push(edge.to);
+      else rendersFrom.set(edge.from, [edge.to]);
+    } else if (edge.kind === "instance-of") {
+      definitionOf.set(edge.from, edge.to);
+    }
+  }
+  const seen = new Set<string>([rootId]);
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const id = stack.pop() as string;
+    for (const instanceId of rendersFrom.get(id) ?? []) {
+      const defId = definitionOf.get(instanceId);
+      if (defId !== undefined && !seen.has(defId)) {
+        seen.add(defId);
+        stack.push(defId);
+      }
+    }
+  }
+  return seen;
 }
 
 /** A compact, agent-readable name for one impacted node, with its source location. */

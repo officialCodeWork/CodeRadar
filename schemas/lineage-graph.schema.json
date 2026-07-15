@@ -93,6 +93,9 @@
         },
         {
           "$ref": "#/definitions/ExternalNode"
+        },
+        {
+          "$ref": "#/definitions/TestNode"
         }
       ]
     },
@@ -683,6 +686,50 @@
       "additionalProperties": false,
       "description": "A destination outside this codebase (TRACKER failure mode B9): an OAuth provider, a payment gateway, a `mailto:`/`tel:` link, or the inbound side of a deep-link/OAuth-callback route. Journeys that reach one leave the app."
     },
+    "TestNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "test"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "vitest",
+            "jest",
+            "unknown"
+          ],
+          "description": "Which runner the file appears to use, by its imports/globals."
+        }
+      },
+      "required": [
+        "framework",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A test file that exercises one or more components (TRACKER step 5.4, failure mode F3). Linked to the components it renders by `covered-by` edges, so the context bundle can name the tests that guard a change — and flag components that have none."
+    },
     "LineageEdge": {
       "type": "object",
       "properties": {
@@ -725,6 +772,7 @@
         "navigates-to",
         "exits-app",
         "enters-at",
+        "covered-by",
         "routes-to"
       ]
     },
