@@ -1,6 +1,6 @@
 {
   "name": "@coderadar/eval",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "CodeRadar eval harness — scans failure-mode fixtures, diffs against golden outputs, emits the scorecard that gates every phase.",
   "license": "MIT",

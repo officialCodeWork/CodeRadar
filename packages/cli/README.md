@@ -102,13 +102,17 @@ Turn a screenshot into `{ terms, structure, annotations }` and match it — term
 
 Endpoints (constants, templates, API wrappers, react-query/SWR), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
 
-## New in 0.2.0
+## New in 0.3.0
+
+The agent interface: `resolve`/`bundle` produce a budgeted **context bundle** (match → lineage → journeys → blast radius → tests → response types → git history) · `impact` blast-radius traversal · test-coverage mapping · response-schema linking (generic / annotation / OpenAPI, via `scan --openapi`) · and the **`ui-lineage-mcp`** MCP server exposing `resolve_context` · `find_component` · `trace_lineage` · `journeys` · `blast_radius` over stdio.
+
+### Previously (0.2.0)
 
 User journeys · action effects · form & non-JSX events · flag/role conditions · a real matching engine (rarity + fuzzy/OCR + structural + most-specific-subtree) · screenshot/vision adapter · alias glossary + corrections store · calibrated confidence with honesty metrics.
 
 ## Status
 
-Pre-1.0. The context-bundle orchestrator and MCP server are next. Output is deterministic and language-agnostic (a plain JSON graph), designed to feed AI agents as a context provider — not to be one.
+Pre-1.0. Output is deterministic and language-agnostic (a plain JSON graph), designed to feed AI agents as a context provider — not to be one. Next: lifecycle/scale hardening (incremental scan, caching) and backend lineage (pixel → API handler).
 
 ## License
 
