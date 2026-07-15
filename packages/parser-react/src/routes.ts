@@ -192,13 +192,47 @@ class RouteAdapter {
     return found;
   }
 
-  /** `const Settings = lazy(() => import("./Settings"))` → the imported page. */
+  /**
+   * `const Settings = lazy(() => import("./Settings"))` → the imported page.
+   * Wrapper helpers around the lazy call — `Loadable(lazy(() => import()))`,
+   * the field app's universal pattern (6F.5) — unwrap to the same import.
+   */
   private resolveLazyVariable(definition: Node): string | null {
     if (!Node.isVariableDeclaration(definition)) return null;
     const init = definition.getInitializer();
     if (init === undefined || !Node.isCallExpression(init)) return null;
-    if (!/^(React\.)?lazy$/.test(init.getExpression().getText())) return null;
+    const isLazy = (call: Node): boolean =>
+      Node.isCallExpression(call) && /^(React\.)?lazy$/.test(call.getExpression().getText());
+    const hasLazy = [init, ...init.getDescendantsOfKind(SyntaxKind.CallExpression)].some(isLazy);
+    if (!hasLazy) return null;
     return this.resolveDynamicImport(init);
+  }
+
+  /**
+   * The route objects of a router config: an array literal (spread elements
+   * expanded), or an identifier resolved to its (possibly imported) array
+   * declaration (6F.5). Hop-bounded — config indirection chains are shallow.
+   */
+  private routeArrayElements(node: Node | undefined, hop: number): Node[] {
+    if (node === undefined || hop > 4) return [];
+    if (Node.isAsExpression(node) || Node.isSatisfiesExpression(node)) {
+      return this.routeArrayElements(node.getExpression(), hop);
+    }
+    if (Node.isArrayLiteralExpression(node)) {
+      return node.getElements().flatMap((element) =>
+        Node.isSpreadElement(element)
+          ? this.routeArrayElements(element.getExpression(), hop + 1)
+          : [element],
+      );
+    }
+    if (Node.isIdentifier(node)) {
+      for (const definition of node.getDefinitionNodes()) {
+        if (!Node.isVariableDeclaration(definition)) continue;
+        const elements = this.routeArrayElements(definition.getInitializer(), hop + 1);
+        if (elements.length > 0) return elements;
+      }
+    }
+    return [];
   }
 
   /**
@@ -247,14 +281,13 @@ class RouteAdapter {
 
   reactRouter(): void {
     for (const sourceFile of this.project.getSourceFiles()) {
-      // Object form: createBrowserRouter([{ path, element, children }, ...])
+      // Object form: createBrowserRouter([{ path, element, children }, ...]).
+      // The config may also be an imported identifier or spread-composed from
+      // separately-declared arrays (6F.5 — the field app's shape).
       for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
         if (!ROUTER_FACTORIES.has(call.getExpression().getText())) continue;
-        const routes = call.getArguments()[0];
-        if (routes !== undefined && Node.isArrayLiteralExpression(routes)) {
-          for (const route of routes.getElements()) {
-            this.objectRoute(route, { basePath: "/", layout: null, guards: [] });
-          }
+        for (const route of this.routeArrayElements(call.getArguments()[0], 0)) {
+          this.objectRoute(route, { basePath: "/", layout: null, guards: [] });
         }
       }
       // JSX form: <Routes><Route …/></Routes> / createRoutesFromElements(<Route/>)
@@ -273,11 +306,7 @@ class RouteAdapter {
     const segment =
       pathInit !== undefined && Node.isStringLiteral(pathInit) ? pathInit.getLiteralValue() : null;
     const isIndex = objectProperty(route, "index")?.getText() === "true";
-    const childrenInit = objectProperty(route, "children");
-    const children =
-      childrenInit !== undefined && Node.isArrayLiteralExpression(childrenInit)
-        ? childrenInit.getElements()
-        : [];
+    const children = this.routeArrayElements(objectProperty(route, "children"), 0);
 
     const routePath = segment !== null ? this.joinPaths(context.basePath, segment) : context.basePath;
 
