@@ -33,7 +33,7 @@ function envelope(value: unknown): ToolResult {
 
 /** Build a configured MCP server bound to one pre-built graph. */
 export function createServer(graph: LineageGraph): McpServer {
-  const server = new McpServer({ name: "coderadar", version: "0.3.0" });
+  const server = new McpServer({ name: "coderadar", version: "0.4.0" });
 
   server.registerTool(
     "resolve_context",

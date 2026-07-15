@@ -113,6 +113,17 @@ Turn a screenshot into `{ terms, structure, annotations }` and match it — term
 
 Endpoints (constants, templates, API wrappers, react-query/SWR), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
 
+## New in 0.4.0
+
+Field-hardening from real-codebase validation (React 18 · Redux Toolkit · RTK Query · MUI · React Router):
+
+- **Matcher fix** — rendered text that normalizes to empty (`|`, `/`, `-`) no longer acts as a universal wildcard; gibberish now declines `no-signal` instead of returning false high-confidence matches.
+- **Instance resolution** — tsconfig-path aliases (`@ui`), multi-hop rename barrels, and `Loadable(lazy(() => import()))` page wrappers now resolve to their definitions, so `blast_radius` and the render graph are complete.
+- **RTK Query** — `createApi` / `injectEndpoints` / `builder.query|mutation` become data sources (baseUrl-joined, `:param`-normalized); generated hooks (`useGetUsersQuery`) wire per-component `fetches-from` edges.
+- **Object-config routes** — `createBrowserRouter` with an imported/spread-composed config and lazy-wrapped elements now emits route nodes, so `journeys("/path")` works.
+- **Scoring** — terms that also name a component (name/props/file) outrank incidental text; every candidate carries a top-line `score` next to `confidence`.
+- **`visualize`** — new command renders the graph as a self-contained interactive HTML galaxy (`ui-lineage visualize -g app.graph.json -o app.galaxy.html`).
+
 ## New in 0.3.0
 
 The agent interface: `resolve`/`bundle` produce a budgeted **context bundle** (match → lineage → journeys → blast radius → tests → response types → git history) · `impact` blast-radius traversal · test-coverage mapping · response-schema linking (generic / annotation / OpenAPI, via `scan --openapi`) · and the **`ui-lineage-mcp`** MCP server exposing `resolve_context` · `find_component` · `trace_lineage` · `journeys` · `blast_radius` over stdio.

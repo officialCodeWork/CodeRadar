@@ -1,6 +1,6 @@
 {
   "name": "@coderadar/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "CodeRadar lineage graph schema — the language-agnostic contract every parser emits and every agent consumes. Bundled into the published `ui-lineage` package.",
   "license": "MIT",
