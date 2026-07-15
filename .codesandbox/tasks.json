@@ -1,0 +1,25 @@
+{
+  "$schema": "https://codesandbox.io/schemas/tasks.json",
+  "setupTasks": [
+    { "name": "Install dependencies", "command": "corepack enable && pnpm install" },
+    { "name": "Build all packages", "command": "pnpm -r build" }
+  ],
+  "tasks": {
+    "test": {
+      "name": "Unit tests",
+      "command": "pnpm test"
+    },
+    "eval": {
+      "name": "Eval gate",
+      "command": "pnpm eval"
+    },
+    "typecheck": {
+      "name": "Typecheck",
+      "command": "pnpm typecheck"
+    },
+    "scan-demo": {
+      "name": "Scan the demo fixture",
+      "command": "node packages/cli/dist/index.js scan eval/fixtures/c1-shared-datatable/app -o app.graph.json"
+    }
+  }
+}
