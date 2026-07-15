@@ -14,9 +14,43 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { classifyTicket, type EntryPoint } from "@coderadar/agent-sdk";
 import { CONFIDENCE_THRESHOLDS } from "@coderadar/core";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { parse as parseYaml } from "yaml";
+
+interface TicketCase {
+  id: string;
+  text: string;
+  screenshots?: number;
+  links?: string[];
+  expect: EntryPoint;
+}
+
+/** Classify the hand-written ticket suite → entry-point accuracy + OOD rejection (step 5.1). */
+function runTickets(): { entryPointAccuracy: number | null; oodRejection: number | null } {
+  const ticketsPath = path.join(evalDir, "tickets", "tickets.json");
+  if (!fs.existsSync(ticketsPath)) return { entryPointAccuracy: null, oodRejection: null };
+  const tickets = JSON.parse(fs.readFileSync(ticketsPath, "utf-8")) as TicketCase[];
+  let correct = 0;
+  let ood = 0;
+  let oodRejected = 0;
+  const misses: string[] = [];
+  for (const ticket of tickets) {
+    const got = classifyTicket(ticket).entryPoint;
+    if (got === ticket.expect) correct += 1;
+    else misses.push(`${ticket.id}: expected ${ticket.expect}, got ${got}`);
+    if (ticket.expect === "out-of-domain") {
+      ood += 1;
+      if (got === "out-of-domain") oodRejected += 1;
+    }
+  }
+  if (misses.length > 0) console.log(`\n[tickets] misclassified: ${misses.join(" · ")}`);
+  return {
+    entryPointAccuracy: tickets.length > 0 ? round(correct / tickets.length) : null,
+    oodRejection: ood > 0 ? round(oodRejected / ood) : null,
+  };
+}
 
 import { runChecks } from "./checks.js";
 import type { FixtureResult, Golden, Scorecard, Thresholds } from "./golden.js";
@@ -162,6 +196,7 @@ function buildScorecard(results: FixtureResult[]): Scorecard {
         okAnswers.length > 0
           ? round(okAnswers.filter((o) => !o.correct).length / okAnswers.length)
           : null,
+      ...runTickets(),
     },
   };
 }
@@ -185,6 +220,9 @@ function print(scorecard: Scorecard): void {
   console.log(
     `high-conf correct=${fmt(s.highConfidenceCorrect)} · ambiguity honesty=${fmt(s.ambiguityHonesty)} · poison rate=${fmt(s.poisonRate)}`,
   );
+  console.log(
+    `ticket entry-point accuracy=${fmt(s.entryPointAccuracy)} · OOD rejection=${fmt(s.oodRejection)}`,
+  );
 }
 
 function gate(scorecard: Scorecard): void {
@@ -207,6 +245,8 @@ function gate(scorecard: Scorecard): void {
     thresholds.minHighConfidenceCorrect,
   );
   checkFloor(violations, "ambiguityHonesty", s.ambiguityHonesty, thresholds.minAmbiguityHonesty);
+  checkFloor(violations, "entryPointAccuracy", s.entryPointAccuracy, thresholds.minEntryPointAccuracy);
+  checkFloor(violations, "oodRejection", s.oodRejection, thresholds.minOodRejection);
   if (
     thresholds.maxPoisonRate !== undefined &&
     s.poisonRate !== null &&

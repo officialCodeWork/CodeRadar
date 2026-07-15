@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.1 — `resolveContext` orchestrator
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.5, 4.1–4.6
+- **Next step:** 5.2 — Context-bundle contract
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
 
 ## What CodeRadar is
@@ -267,7 +267,7 @@ The heart of the project. C1 and B1 live here.
 
 ## Phase 5 — Context bundle & agent interface
 
-### [ ] 5.1 `resolveContext` orchestrator
+### [x] 5.1 `resolveContext` orchestrator
 **Failure modes:** E1, E5, E6, F6(decline), E4(decline)
 **Build:** `@coderadar/agent-sdk` package. `resolveContext(ticket: { text, screenshots?, links? })`:
 - Entry-point classification: visual (screenshot present) / textual (UI terms in prose) / behavioral ("clicking X does nothing" → match on event/handler/journey vocabulary, E5) / out-of-domain (backend/infra/perf → `declined`, E6) / unsupported-input (video → structured decline, E4). Classification is rule-based + keyword lexicons; no LLM call inside the node (determinism, G8).

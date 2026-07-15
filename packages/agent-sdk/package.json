@@ -1,0 +1,32 @@
+{
+  "name": "@coderadar/agent-sdk",
+  "version": "0.2.0",
+  "private": true,
+  "description": "resolveContext orchestrator — classifies a ticket and runs the matching engine. Deterministic, no LLM in the node. Bundled into the published ui-lineage package.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@coderadar/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}

@@ -9,3 +9,10 @@
  */
 export * from "@coderadar/core";
 export { resolveHookEdges, scanReact, type ScanOptions } from "@coderadar/parser-react";
+export {
+  classifyTicket,
+  type ContextResult,
+  type EntryPoint,
+  resolveContext,
+  type Ticket,
+} from "@coderadar/agent-sdk";

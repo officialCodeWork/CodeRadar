@@ -16,6 +16,7 @@ import {
   saveGraph,
   traceLineage,
 } from "@coderadar/core";
+import { resolveContext } from "@coderadar/agent-sdk";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
@@ -176,6 +177,32 @@ program
     }
     console.log(`${paths.length} journey path(s) from ${start}:\n`);
     for (const path of paths) printJourneyPath(path);
+  });
+
+program
+  .command("resolve")
+  .description("Resolve a ticket: classify its entry point, then match it to component(s)")
+  .argument("<text>", "the ticket text")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
+  .option("-s, --screenshot", "the ticket has a screenshot attached")
+  .action((text: string, opts: { graph: string; screenshot?: boolean }) => {
+    const graph = loadGraph(opts.graph);
+    const result = resolveContext(graph, {
+      text,
+      ...(opts.screenshot ? { screenshots: 1 } : {}),
+    });
+    console.log(`entry point: ${result.entryPoint} — ${result.classification.reason}`);
+    if (result.decline !== undefined) {
+      console.log(`declined (${result.decline.reason}): ${result.decline.message}`);
+      return;
+    }
+    const match = result.match;
+    if (match === undefined || match.status === "declined") {
+      console.log(`no component matched (${match?.declineReason ?? "no result"}).`);
+      return;
+    }
+    if (match.status === "ambiguous") console.log(`ambiguous — ${match.disambiguation}\n`);
+    for (const candidate of match.candidates.slice(0, 5)) printMatchCandidate(candidate);
   });
 
 program

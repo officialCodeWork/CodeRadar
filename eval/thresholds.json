@@ -6,5 +6,7 @@
   "minLineageRecall": 0.95,
   "minHighConfidenceCorrect": 1,
   "minAmbiguityHonesty": 0.9,
-  "maxPoisonRate": 0.05
+  "maxPoisonRate": 0.05,
+  "minEntryPointAccuracy": 0.9,
+  "minOodRejection": 0.95
 }
