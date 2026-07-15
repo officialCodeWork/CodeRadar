@@ -396,6 +396,10 @@
         },
         "subject": {
           "type": "string"
+        },
+        "pr": {
+          "type": "number",
+          "description": "PR number parsed from a merge/squash subject, when present."
         }
       },
       "required": [
@@ -403,7 +407,7 @@
         "subject"
       ],
       "additionalProperties": false,
-      "description": "Recent git history (step 5.6) — empty until then."
+      "description": "Recent git history (step 5.6, F5) — a commit touching the matched files."
     }
   }
 }

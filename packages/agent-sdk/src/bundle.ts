@@ -20,6 +20,7 @@ import {
   traceLineage,
 } from "@coderadar/core";
 
+import { gitHistory } from "./history.js";
 import { resolveContext } from "./resolve.js";
 import type { EntryPoint, Ticket } from "./types.js";
 
@@ -57,10 +58,12 @@ export interface BundleTest {
   file: string;
 }
 
-/** Recent git history (step 5.6) — empty until then. */
+/** Recent git history (step 5.6, F5) — a commit touching the matched files. */
 export interface BundleCommit {
   sha: string;
   subject: string;
+  /** PR number parsed from a merge/squash subject, when present. */
+  pr?: number;
 }
 
 export interface ContextBundle {
@@ -81,6 +84,8 @@ export interface BundleOptions {
   budgetTokens?: number;
   /** Journey expansion depth around the match. Default 2. */
   journeyDepth?: number;
+  /** Max recent commits to include in the history section. Default 5. */
+  historyLimit?: number;
 }
 
 /** Trim sections in this reverse-priority order until the bundle fits its budget. */
@@ -99,6 +104,7 @@ export function buildBundle(
 ): ContextBundle {
   const budgetTokens = options.budgetTokens ?? 4000;
   const depth = options.journeyDepth ?? 2;
+  const historyLimit = options.historyLimit ?? 5;
   const ctx = resolveContext(graph, ticket);
 
   const bundle: ContextBundle = {
@@ -181,6 +187,19 @@ export function buildBundle(
     }
     bundle.tests = [...testFiles].sort().map((file) => ({ file }));
     if (!topCovered) bundle.warnings.push(`untested — no test renders ${top.component.name}`);
+
+    // Git history (5.6): recent commits touching the matched component's files.
+    const files = new Set<string>([top.component.loc.file]);
+    for (const instance of top.instances) files.add(instance.loc.file);
+    for (const id of subtree) {
+      const node = byId.get(id);
+      if (node !== undefined) files.add(node.loc.file);
+    }
+    bundle.history = gitHistory(graph.root, [...files], historyLimit).map((commit) => ({
+      sha: commit.sha,
+      subject: commit.subject,
+      ...(commit.pr !== undefined ? { pr: commit.pr } : {}),
+    }));
   }
 
   if (graph.meta?.dirty === true) {
