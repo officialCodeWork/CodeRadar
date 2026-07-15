@@ -23,6 +23,8 @@ import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
 
+import { renderVisualization } from "./visualize.js";
+
 const program = new Command();
 
 program
@@ -270,6 +272,23 @@ program
   .action((component: string, terms: string[], opts: { corrections: string }) => {
     recordCorrection(opts.corrections, { terms, component });
     console.log(`Recorded: [${terms.join(", ")}] → ${component}  (${opts.corrections})`);
+  });
+
+program
+  .command("visualize")
+  .description("Render the lineage graph as a self-contained interactive HTML galaxy")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
+  .option("-o, --out <file>", "output HTML file", "ui-lineage.galaxy.html")
+  .option("-t, --title <title>", "page title")
+  .action((opts: { graph: string; out: string; title?: string }) => {
+    const graph = loadGraph(opts.graph);
+    const html = renderVisualization(graph, opts.title);
+    fs.writeFileSync(opts.out, html);
+    const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
+    console.log(
+      `Galaxy written to ${opts.out} (${kb} KB, ${graph.nodes.length} nodes / ${graph.edges.length} edges).`,
+    );
+    console.log(`Open it in a browser: open ${opts.out}`);
   });
 
 const STEP_ARROW: Record<string, string> = {

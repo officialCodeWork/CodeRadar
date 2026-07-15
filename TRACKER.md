@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.8 galaxy visualizer · 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — fixture's wrapper shape already passes)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7
+- **Next step:** 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — the fixture's custom-wrapper shape already passes; get a failing test file from the tester or ship the defensive `coverage-unmapped` half only)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.8
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -508,7 +508,7 @@ printed by the CLI (`score=… confidence=…`); MCP inherits it through the env
 Candidate isn't part of the generated schemas, so no schema change (drift gate confirms).
 2 new core tests (211 total); eval 290/0/0/0, gate OK, metrics 1.000.
 
-### [ ] 6F.8 Galaxy visualizer (`coderadar visualize`)
+### [x] 6F.8 Galaxy visualizer (`coderadar visualize`)
 **Failure modes:** — (user-requested feature, 2026-07-15)
 **Build:** new CLI command `visualize -g <graph.json> -o <out.html>` emitting a single
 self-contained HTML file (graph JSON + all JS/CSS inlined, zero network dependencies) that
@@ -520,10 +520,27 @@ physics pause. Must stay responsive at field scale (~2.6k nodes / ~4.8k edges).
 **Accept:** generated from the demo-app graph: opens from `file://` with no external requests,
 all node kinds rendered and filterable; unit tests on generation (embedded JSON round-trips,
 output is self-contained); README section with a screenshot.
+**Done:** new `visualize.ts` in the CLI package — pure `renderVisualization(graph)` (graph in,
+HTML string out, trivially testable) plus a `toViewModel` that trims nodes to what the client
+needs and drops dangling edges. The command `ui-lineage visualize -g <graph> -o <html>` writes
+one self-contained file: graph JSON embedded (with `<` → `<` so rendered text containing
+`</script>` can't break out), all CSS/JS inlined, no network requests. Client is a canvas
+force-directed sim with grid-approximated repulsion (neighbor-cell only) so it scales to
+thousands of nodes; node radius scales with degree; kinds color-coded with a legend.
+Interactions: per-kind node + edge filter toggles (with all/none), search-and-fly, click →
+detail panel (name, kind, detail line, file:line, connection count, flags) with neighbor
+highlight + dim-others (visual blast radius), drag-to-pin, scroll-zoom, physics pause,
+always-labels. Verified live in-browser against the demo-app graph: renders, filters, physics
+toggle, and search→select all work with zero console errors; `file://`/`http` both load with
+no external requests. CLI package gained a `test` script + vitest; 5 new tests (embed
+round-trips, dangling-edge drop, `</script>` breakout guard, self-contained assertions).
+README documents the command. eval unaffected (290/0/0/0). **Gate 6F extractor criteria met;
+only 6F.6 (coverage, data-blocked) remains before the gate fully closes.**
 
-**Gate 6F:** field-patterns fixture fully green (skip list empty) · instance resolution ≥ 95% ·
-RTK data sources > 0 · route nodes > 0 · gibberish queries decline `no-signal` · `pnpm eval`
-green end-to-end.
+**Gate 6F:** field-patterns fixture fully green (skip list empty ✅) · instance resolution ≥ 95%
+(✅ 100%) · RTK data sources > 0 (✅) · route nodes > 0 (✅) · gibberish queries decline
+`no-signal` (✅) · `pnpm eval` green end-to-end (✅ 290/0/0/0). Remaining before the gate is
+formally stamped: 6F.6 test-coverage hardening (blocked on a real failing sample).
 
 ---
 
