@@ -1,6 +1,6 @@
 {
   "failureMode": "D2",
-  "note": "Field-pattern regression fixture (6F.2): mirrors the shapes the 2026-07-15 ih-frontend validation run used where every gate scored 1.000 but the field run failed — tsconfig-path-alias barrel imports (@ui), Loadable(lazy(() => import())) page elements, route arrays composed in a separate file and passed to createBrowserRouter as an identifier, an RTK Query store (createApi/injectEndpoints/builder.query|mutation), and tests that render through a custom providers wrapper. Checks assert TARGET behavior; the ones the current scanner cannot satisfy are marked expectedFail with the step that must enable them (6F.4 RTK Query, 6F.5 object-config routes; the 6F.3 alias/lazy marks were removed when that step landed). xfail semantics remove stale marks automatically: once a step lands, its checks flip to unexpected-pass and gate until the marks are deleted. Verified working already in this shape: relative multi-hop barrel with rename (InvoicesPage's Grid), and covered-by detection through the custom render wrapper.",
+  "note": "Field-pattern regression fixture (6F.2): mirrors the shapes the 2026-07-15 ih-frontend validation run used where every gate scored 1.000 but the field run failed — tsconfig-path-alias barrel imports (@ui), Loadable(lazy(() => import())) page elements, route arrays composed in a separate file and passed to createBrowserRouter as an identifier, an RTK Query store (createApi/injectEndpoints/builder.query|mutation), and tests that render through a custom providers wrapper. Checks assert TARGET behavior; the ones the current scanner cannot satisfy are marked expectedFail with the step that must enable them (6F.5 object-config routes; the 6F.3 alias/lazy and 6F.4 RTK Query marks were removed when those steps landed). xfail semantics remove stale marks automatically: once a step lands, its checks flip to unexpected-pass and gate until the marks are deleted. Verified working already in this shape: relative multi-hop barrel with rename (InvoicesPage's Grid), and covered-by detection through the custom render wrapper.",
   "expect": {
     "components": [
       { "name": "HomePage", "instances": 0 },
@@ -54,16 +54,8 @@
       }
     ],
     "attributions": [
-      {
-        "component": "UsersPage",
-        "endpoints": ["/api/users"],
-        "expectedFail": "enabled by 6F.4 — createApi/injectEndpoints/builder.query are unrecognized; 0 data-source nodes today"
-      },
-      {
-        "component": "InvoicesPage",
-        "endpoints": ["/api/invoices"],
-        "expectedFail": "enabled by 6F.4 — injectEndpoints with an object-form query ({ url }) in a second api slice file"
-      }
+      { "component": "UsersPage", "endpoints": ["/api/users"] },
+      { "component": "InvoicesPage", "endpoints": ["/api/invoices"] }
     ],
     "blast": [
       {

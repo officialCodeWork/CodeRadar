@@ -158,6 +158,7 @@ export type DataSourceKind =
   | "fetch"
   | "axios"
   | "react-query"
+  | "rtk-query"
   | "swr"
   | "graphql"
   | "websocket"
