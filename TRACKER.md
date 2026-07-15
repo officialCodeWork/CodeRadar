@@ -5,7 +5,7 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.6 test-coverage hardening (blocked: needs the field's actual failing variant — Grafana produced 1,009 covered-by edges, so detection works on real code; the fixture's custom-wrapper shape already passes)
+- **Next step:** publish 0.4.1 to the tester (all shippable fixes: 6F.6–6F.10 + visualizer). 6F.6 detection half remains blocked on a real failing test file — its defensive `coverage-unmapped` half shipped.
 - **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 · **released 0.4.0** (tag v0.4.0, PR #50 to main; publish to npm pending). **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
@@ -477,7 +477,7 @@ unmarked, so **the fixture is fully green with zero marks and Gate 6F's extracto
 are met**. 4 new parser tests (129 total); eval 290 pass / 0 fail / 0 xfail / 0
 unexpected-pass, gate OK, metrics 1.000.
 
-### [ ] 6F.6 Test-coverage detection hardening
+### [~] 6F.6 Test-coverage detection hardening
 **Failure modes:** F3
 **Build:** the field run found 1 `covered-by` edge app-wide, making `untested` warnings
 near-universal noise. Handle custom render wrappers (`renderWithProviders(<X/>)` — resolve
@@ -488,6 +488,16 @@ through to the JSX argument), test files importing through the same alias/barrel
 **Accept:** field-patterns fixture: wrapped renders produce `covered-by` edges; a near-empty
 coverage graph emits `coverage-unmapped` instead of per-component `untested`; enable the 6F.2
 checks.
+**Done (defensive half):** the `coverage-unmapped` downgrade shipped — `buildBundle` now, when
+test files exist but < 5% of components carry a `covered-by` edge, emits one graph-level
+`coverage-unmapped — only N/M components have mapped test coverage` note instead of a
+near-universal false `untested`. A genuinely test-free repo (no test nodes) keeps the accurate
+per-component `untested`. 3 agent-sdk unit tests (near-empty → downgrade · healthy → keep ·
+no-tests → keep); verified on the real Grafana graph (34% coverage → per-component `untested`
+preserved). **Detection half still open** (custom-wrapper/alias/outside-`__tests__` resolution):
+could NOT reproduce the field failure — the fixture's `renderWithProviders` shape already maps,
+and Grafana produced 1,009 `covered-by` edges, so detection works on real code. Blocked on a
+real failing test file from the tester before building the wrong thing.
 
 ### [x] 6F.7 Scoring & result-surface polish
 **Failure modes:** A4, D2, D6

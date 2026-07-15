@@ -97,4 +97,81 @@ describe("buildBundle (TRACKER 5.2, F1)", () => {
     expect(ood.match).toEqual([]);
     expect(ood.warnings.some((w) => w.includes("out-of-scope"))).toBe(true);
   });
+
+  it("reports a plain 'untested' when the repo genuinely has no tests", () => {
+    // graphWithLineage has 1 component, 0 test nodes → untested is accurate.
+    const bundle = buildBundle(graph, { text: "the Big card overview" }, { budgetTokens: 8000 });
+    expect(bundle.warnings.some((w) => w.startsWith("untested —"))).toBe(true);
+    expect(bundle.warnings.some((w) => w.startsWith("coverage-unmapped"))).toBe(false);
+  });
+});
+
+describe("coverage-unmapped downgrade (TRACKER 6F.6, F3)", () => {
+  // A graph where test files EXIST but almost none map to a component — the
+  // field-found signature (tests present, ~0 covered-by edges). The matched
+  // component's missing coverage must read as "unmapped", not a false "untested".
+  function sparselyCoveredGraph(componentCount: number, coveredCount: number): LineageGraph {
+    const nodes: LineageGraph["nodes"] = [];
+    const edges: LineageEdge[] = [];
+    for (let i = 0; i < componentCount; i += 1) {
+      const name = i === 0 ? "SilencePanel" : `Widget${i}`;
+      const text = i === 0 ? "Silence alert notifications" : `Widget ${i} label`;
+      nodes.push({
+        id: nodeId("component", `${name}.tsx`, name),
+        kind: "component",
+        name,
+        loc: loc(`${name}.tsx`),
+        exportName: name,
+        props: [],
+        renderedText: [{ text, source: "jsx" }],
+        rendersComponents: [],
+        structure: {
+          table: 0, columns: 0, form: 0, input: 0, button: 0,
+          link: 0, image: 0, heading: 0, list: 0, repeated: 0,
+        },
+      });
+    }
+    // Several test files exist, but they only cover the LAST few components —
+    // never the matched SilencePanel (index 0).
+    for (let t = 0; t < 5; t += 1) {
+      const testId = nodeId("test", `Widget.test.tsx`, `test${t}`);
+      nodes.push({
+        id: testId,
+        kind: "test",
+        name: `test${t}`,
+        loc: loc(`__tests__/Widget${t}.test.tsx`),
+        framework: "vitest",
+      });
+      if (t < coveredCount) {
+        edges.push({ from: nodes[componentCount - 1 - t]!.id, to: testId, kind: "covered-by" });
+      }
+    }
+    return {
+      version: 2,
+      root: "/app",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      generator: "test",
+      nodes,
+      edges,
+    };
+  }
+
+  it("emits coverage-unmapped instead of untested when coverage is near-empty", () => {
+    // 40 components, tests present, only 1 covered (2.5% < 5% floor).
+    const g = sparselyCoveredGraph(40, 1);
+    const bundle = buildBundle(g, { text: "Silence alert notifications" }, { budgetTokens: 8000 });
+    expect(bundle.match[0]?.component).toBe("SilencePanel");
+    expect(bundle.warnings.some((w) => w.startsWith("coverage-unmapped"))).toBe(true);
+    expect(bundle.warnings.some((w) => w.startsWith("untested —"))).toBe(false);
+  });
+
+  it("keeps per-component untested when coverage is healthy", () => {
+    // 10 components, 5 covered (50% ≥ 5%) — the matched SilencePanel is not one
+    // of them, so untested is the accurate, useful signal.
+    const g = sparselyCoveredGraph(10, 5);
+    const bundle = buildBundle(g, { text: "Silence alert notifications" }, { budgetTokens: 8000 });
+    expect(bundle.match[0]?.component).toBe("SilencePanel");
+    expect(bundle.warnings.some((w) => w.startsWith("untested —"))).toBe(true);
+    expect(bundle.warnings.some((w) => w.startsWith("coverage-unmapped"))).toBe(false);
+  });
 });
