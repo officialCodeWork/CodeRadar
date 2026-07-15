@@ -10,6 +10,7 @@ import {
   type LineageNode,
   nodeId,
   type RenderedText,
+  type ResponseType,
   type SourceLocation,
   type StructuralSignature,
 } from "@coderadar/core";
@@ -29,6 +30,7 @@ import {
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
+import { linkOpenApiResponses, loadOpenApi, responseFromCall } from "./response.js";
 import { detectRoutes } from "./routes.js";
 import { detectTests, isTestFile } from "./tests.js";
 import { detectWrappers, type WrapperRegistry } from "./wrappers.js";
@@ -69,6 +71,13 @@ export interface ScanOptions {
    * (TRACKER step 3.5, failure modes G5/B5).
    */
   featureFlags?: string[];
+  /**
+   * Path (relative to `root`) to an OpenAPI 3 JSON spec. When set, data sources
+   * whose response type can't be recovered from the code are matched to the
+   * spec by endpoint + method, so lineage entries still carry a response shape
+   * (TRACKER step 5.5, failure mode F4).
+   */
+  openapi?: string;
 }
 
 type FunctionLike = FunctionDeclaration | ArrowFunction | FunctionExpression;
@@ -244,6 +253,11 @@ export function scanReact(options: ScanOptions): LineageGraph {
   );
   // Tests last: components must exist before we can attach coverage to them.
   detectTests(project, root, nodes, addEdge);
+  // OpenAPI fills response types the code didn't spell out (5.5, F4).
+  if (options.openapi !== undefined) {
+    const openApi = loadOpenApi(root, options.openapi);
+    if (openApi !== null) linkOpenApiResponses(nodes, openApi);
+  }
 
   return {
     version: 2,
@@ -257,6 +271,11 @@ export function scanReact(options: ScanOptions): LineageGraph {
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
+}
+
+/** Spread helper: emit a `responseType` field only when one was recovered (5.5). */
+function responseTypeProp(rt: ResponseType | null): { responseType?: ResponseType } {
+  return rt !== null ? { responseType: rt } : {};
 }
 
 function locOf(node: Node, file: string): SourceLocation {
@@ -698,6 +717,7 @@ function extractBodyFacts(
           raw: dataSource.raw,
           resolved: dataSource.resolved,
           ...(dataSource.queryKey !== undefined ? { queryKey: dataSource.queryKey } : {}),
+          ...responseTypeProp(responseFromCall(call)),
         });
       }
       addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
@@ -1042,6 +1062,7 @@ function detectStores(
         endpoint: detected.endpoint,
         raw: detected.raw,
         resolved: detected.resolved,
+        ...responseTypeProp(responseFromCall(call)),
       });
     }
     return dsId;
@@ -1870,6 +1891,7 @@ function resolveHandlerChains(
           endpoint: detected.endpoint,
           raw: detected.raw,
           resolved: detected.resolved,
+          ...responseTypeProp(responseFromCall(call)),
         });
       }
       pushEffect(effects, { kind: "triggers", to: dsId });

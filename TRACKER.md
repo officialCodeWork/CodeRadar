@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.5 — Response-schema linking
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.4
+- **Next step:** 5.6 — Git history
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.5
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
 
 ## What CodeRadar is
@@ -291,10 +291,11 @@ The heart of the project. C1 and B1 live here.
 **Accept:** fixture with co-located tests: bundle names the right test files; components without tests get `warnings: ["untested"]`.
 **Done:** `TestNode` (kind `test`, framework vitest/jest/unknown) + `covered-by` edge in core (schema regenerated, drift gate green). New `detectTests` parser pass: test files are excluded from the component/instance scan (`isTestFile`) so they never emit spurious nodes, then swept — every component a test renders (JSX tag) or imports resolves to a `covered-by` edge (imports resolved to their source file for precise attribution, name fallback otherwise). Bundle populates `tests` from the matched component's render subtree (`componentSubtree`) and pushes an `untested` warning when the matched component has no coverage; `blastRadius` counts a test as a dependent of the component it covers. New `f3-test-coverage` fixture + `GoldenCoverage`/`coverage` check kind (covers UserList, Sidebar untested). 6 parser unit tests (incl. two bundle-level); eval 262/0/0, gate OK.
 
-### [ ] 5.5 Response-schema linking
+### [x] 5.5 Response-schema linking
 **Failure modes:** F4
 **Build:** data sources link to response types: generic argument (`useQuery<User[]>`), annotated variable types, or an OpenAPI spec (scan option `openapi: path`) matched by endpoint pattern. Bundle lineage entries carry `responseType: { name, fields }` (one level of fields, not deep).
 **Accept:** fixture `f4-typed-responses` green for all three sources (generic, annotation, OpenAPI).
+**Done:** `ResponseType { name, fields: {name,type}[], source }` on `DataSourceNode` in core (schema regenerated, drift gate green). New `response.ts` parser module: `responseFromCall` recovers the type from a call's generic argument (`axios.get<User[]>`, `useQuery<T>`) or, failing that, the annotation on the nearest enclosing typed variable whose initializer holds the call (`const data: Invoice[] = await fetch(…).then(r => r.json())`), stopping at function boundaries; only property signatures are read (one level, methods skipped). `loadOpenApi`/`linkOpenApiResponses` is a post-pass that fills untyped sources from an OpenAPI 3 JSON spec (`openapi` scan option / CLI `--openapi`), matching `${METHOD} ${endpoint}` with `{id}`→`:id` normalization and `$ref` resolution. Bundle lineage `dataSources` carry `responseType`; `trace` prints it. New `f4-typed-responses` fixture + `GoldenResponse`/`responses` check kind (all three sources). 5 parser unit tests incl. bundle-level; eval 265/0/0, gate OK.
 
 ### [ ] 5.6 Git history context
 **Failure modes:** F5

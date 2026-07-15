@@ -351,6 +351,35 @@ export function runChecks(
     }
   }
 
+  for (const spec of golden.expect.responses ?? []) {
+    const id = `response:${spec.endpoint}=>${spec.name}`;
+    const source = graph.nodes.find(
+      (n) =>
+        n.kind === "data-source" &&
+        n.endpoint === spec.endpoint &&
+        (spec.method === undefined || n.method === spec.method),
+    );
+    const rt = source?.kind === "data-source" ? source.responseType : undefined;
+    let passed = rt !== undefined && rt.name === spec.name;
+    let detail: string | undefined;
+    if (source === undefined) detail = `no data source for ${spec.endpoint}`;
+    else if (rt === undefined) detail = `no response type on ${spec.endpoint}`;
+    else if (rt.name !== spec.name) detail = `expected response ${spec.name}, got ${rt.name}`;
+    if (passed && rt !== undefined && spec.from !== undefined && rt.source !== spec.from) {
+      passed = false;
+      detail = `expected source ${spec.from}, got ${rt.source}`;
+    }
+    if (passed && rt !== undefined && spec.fields !== undefined) {
+      const have = new Set(rt.fields.map((f) => f.name));
+      const missing = spec.fields.filter((f) => !have.has(f));
+      if (missing.length > 0) {
+        passed = false;
+        detail = `missing fields [${missing.join(", ")}] (have [${[...have].join(", ")}])`;
+      }
+    }
+    finalize("responses", id, passed, spec.expectedFail, detail);
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+") || JSON.stringify(query.structure)}`;
     const result = matchComponents(graph, {

@@ -1,0 +1,27 @@
+{
+  "failureMode": "F4",
+  "note": "Response-schema linking from all three sources: a generic type argument (axios.get<User[]>), a variable-type annotation (const data: Invoice[] = …fetch…), and an OpenAPI spec matched by endpoint (GET /api/orders → Order[]).",
+  "scan": { "openapi": "openapi.json" },
+  "expect": {
+    "responses": [
+      {
+        "endpoint": "/api/users",
+        "name": "User[]",
+        "from": "generic",
+        "fields": ["id", "name", "email"]
+      },
+      {
+        "endpoint": "/api/invoices",
+        "name": "Invoice[]",
+        "from": "annotation",
+        "fields": ["id", "number", "total"]
+      },
+      {
+        "endpoint": "/api/orders",
+        "name": "Order[]",
+        "from": "openapi",
+        "fields": ["id", "status", "total"]
+      }
+    ]
+  }
+}

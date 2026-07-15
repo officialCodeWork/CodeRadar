@@ -37,9 +37,13 @@ program
   .description("Scan a React codebase and emit a lineage graph JSON")
   .argument("<dir>", "directory to scan")
   .option("-o, --out <file>", "output file", "ui-lineage.graph.json")
-  .action((dir: string, opts: { out: string }) => {
+  .option("--openapi <file>", "OpenAPI 3 JSON spec (relative to <dir>) for response-schema linking")
+  .action((dir: string, opts: { out: string; openapi?: string }) => {
     const meta = collectGraphMeta(path.resolve(dir));
-    const graph = { ...resolveHookEdges(scanReact({ root: dir })), meta };
+    const graph = {
+      ...resolveHookEdges(scanReact({ root: dir, ...(opts.openapi ? { openapi: opts.openapi } : {}) })),
+      meta,
+    };
     saveGraph(graph, opts.out);
     const counts = new Map<string, number>();
     for (const node of graph.nodes) {
@@ -119,6 +123,10 @@ program
       console.log("  data sources:");
       for (const ds of lineage.dataSources) {
         console.log(`    [${ds.sourceKind}] ${ds.method ?? "?"} ${ds.endpoint}  (${ds.loc.file}:${ds.loc.line})`);
+        if (ds.responseType !== undefined) {
+          const fields = ds.responseType.fields.map((f) => `${f.name}: ${f.type}`).join(", ");
+          console.log(`      → ${ds.responseType.name} { ${fields} }  (${ds.responseType.source})`);
+        }
       }
     }
     if (lineage.state.length > 0) {

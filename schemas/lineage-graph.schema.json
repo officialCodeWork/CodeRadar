@@ -430,6 +430,10 @@
         "queryKey": {
           "type": "string",
           "description": "react-query/SWR cache key as written in source (e.g. `[\"users\"]`) — the identity used for cache-sharing analysis (C7) alongside the endpoint."
+        },
+        "responseType": {
+          "$ref": "#/definitions/ResponseType",
+          "description": "The response shape this source returns, when recoverable (5.5, F4)."
         }
       },
       "required": [
@@ -466,6 +470,55 @@
         "none"
       ],
       "description": "How much of an endpoint was statically resolvable."
+    },
+    "ResponseType": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Named type when resolvable (\"User\", \"User[]\"); otherwise the type text."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResponseField"
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "generic",
+            "annotation",
+            "openapi"
+          ],
+          "description": "Where the type was recovered from."
+        }
+      },
+      "required": [
+        "name",
+        "fields",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "The shape a data source returns (TRACKER step 5.4→5.5, failure mode F4). Resolved from a call's generic argument (`useQuery<User[]>`), a type annotation on the variable the result lands in, or an OpenAPI spec matched by endpoint. One level deep only — fields, not their nested shapes."
+    },
+    "ResponseField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "Field type text, e.g. \"string\", \"number | null\", \"Address\"."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "One field of a response type — a name and its type as written."
     },
     "StateNode": {
       "type": "object",
