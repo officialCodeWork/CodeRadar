@@ -1,0 +1,17 @@
+{
+  "failureMode": "A16",
+  "note": "HTML-entity rendered text (self-found on Grafana, 0.4.0): a component whose only rendered text is HTML entities (&nbsp;, &#34;, &gt;, &quot;, &middot;, &lt;, &rsaquo;) normalized to junk tokens ('nbsp', '34', 'gt'), creating spurious matches — and a numeric entity like &#34; let a gibberish query sharing its digits ('...12345') match. Fix (6F.10): decode HTML entities in the parser's text-extraction pass so they become the character React renders, which normalizes away as punctuation. The entity-only component then produces no match target: a named-entity token ('nbsp'), a numeric-entity token ('34'), and a gibberish query that shares those digits all decline no-signal, while a real query still lands on the real component and isn't poisoned by the digit-sharing gibberish.",
+  "expect": {
+    "components": [
+      { "name": "EntitySpacer", "instances": 0 },
+      { "name": "QuotaNotice", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["34"], "status": "declined" },
+      { "terms": ["nbsp"], "status": "declined" },
+      { "terms": ["zzqwxnomatch12345"], "status": "declined" },
+      { "terms": ["Storage quota exceeded"], "status": "ok", "top": "QuotaNotice" },
+      { "terms": ["zzqwxnomatch12345", "Storage quota exceeded"], "status": "ok", "top": "QuotaNotice" }
+    ]
+  }
+}
