@@ -122,3 +122,31 @@ describe("Next.js adapter (b4 fixture)", () => {
     expect(routes(reactRouterGraph).every((r) => r.router === "react-router")).toBe(true);
   });
 });
+
+describe("object-config router composition (TRACKER 6F.5)", () => {
+  const fieldGraph = scanReact({
+    root: path.join(fixturesDir, "field-patterns/app"),
+  });
+  const route = (p: string) =>
+    fieldGraph.nodes.find((n) => n.kind === "route" && n.path === p);
+  const routesTo = (p: string) =>
+    fieldGraph.edges.find((e) => e.kind === "routes-to" && e.from === route(p)?.id)?.to;
+
+  it("resolves createBrowserRouter(identifier) with a config from another file", () => {
+    expect(route("/")).toBeDefined();
+    expect(routesTo("/")).toBe("component:pages/HomePage.tsx#HomePage");
+  });
+
+  it("routes-to survives the Loadable(lazy(() => import())) wrapper", () => {
+    expect(routesTo("/users")).toBe("component:pages/UsersPage.tsx#UsersPage");
+  });
+
+  it("expands spread-composed route arrays", () => {
+    expect(routesTo("/invoices")).toBe("component:pages/InvoicesPage.tsx#InvoicesPage");
+  });
+
+  it("links programmatic navigation to the recognized route", () => {
+    const nav = fieldGraph.edges.find((e) => e.kind === "navigates-to");
+    expect(nav?.to).toBe(route("/users")?.id);
+  });
+});

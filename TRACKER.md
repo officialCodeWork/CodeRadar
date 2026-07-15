@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.5 object-config React Router recognition
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.4
+- **Next step:** 6F.6 test-coverage detection hardening (needs the field's actual failing variant) · 6F.7 scoring polish · 6F.8 visualizer
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -454,7 +454,7 @@ a consumer-less source. Server-cache `useSelector` reads remain future work (not
 the accept criteria). 4 new parser tests (125 total); eval 285 pass / 0 fail / 5 xfail (all
 6F.5) / 0 unexpected-pass, gate OK, metrics 1.000.
 
-### [ ] 6F.5 Object-config React Router recognition
+### [x] 6F.5 Object-config React Router recognition
 **Failure modes:** B4, B3
 **Build:** step 3.1 covers `createBrowserRouter` on fixtures, but the field app produced 0
 route nodes — diagnose and close the gap: route-object arrays defined in separate
@@ -464,6 +464,18 @@ survive the lazy wrapper (depends on 6F.3).
 **Accept:** field-patterns fixture: all golden routes emit `RouteNode`s; `journeys("/route")`
 returns a real multi-step path (field regression: was `declined: not-found`); enable the 6F.2
 checks.
+**Done:** three changes in routes.ts. (1) New `routeArrayElements`: a router config resolves
+whether it's an array literal, an imported identifier (via go-to-definition), or
+spread-composed from separately-declared arrays — applied to both the `createBrowserRouter`
+argument and every `children` property, `as`/`satisfies` unwrapped, hop-bounded. (2)
+`resolveLazyVariable` now unwraps wrapper helpers around the lazy call —
+`Loadable(lazy(() => import()))` resolves to the imported page's default export, so
+`routes-to` lands on the real component. (3) No change needed for `navigates-to`/journeys:
+they lit up as soon as route nodes existed. Field-patterns golden: all 5 remaining xfails
+removed — 3 routes, the onClick→/users effect, and the "/"→"/users" terminal journey all pass
+unmarked, so **the fixture is fully green with zero marks and Gate 6F's extractor criteria
+are met**. 4 new parser tests (129 total); eval 290 pass / 0 fail / 0 xfail / 0
+unexpected-pass, gate OK, metrics 1.000.
 
 ### [ ] 6F.6 Test-coverage detection hardening
 **Failure modes:** F3
