@@ -24,6 +24,16 @@ describe("context bundle over a real scanned graph (TRACKER 5.2)", () => {
     expect(bundle.journeys.length).toBeGreaterThan(0);
   });
 
+  it("wires recent git history over the matched files (5.6)", () => {
+    // The b3 fixture files are tracked in this repo, so history is populated.
+    const bundle = buildBundle(graph, { text: "the 'All users' page is broken" }, { budgetTokens: 8000 });
+    expect(Array.isArray(bundle.history)).toBe(true);
+    for (const commit of bundle.history) {
+      expect(commit.sha).toMatch(/^[0-9a-f]{7,}$/);
+      expect(typeof commit.subject).toBe("string");
+    }
+  });
+
   it("every bundle fits the token budget at 2k / 4k / 8k", () => {
     const tickets = [
       "the 'All users' page is broken",

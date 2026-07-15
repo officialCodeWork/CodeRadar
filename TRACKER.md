@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.6 — Git history
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.5
+- **Next step:** 5.7 — MCP server (→ Gate 5)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.6
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
 
 ## What CodeRadar is
@@ -297,10 +297,11 @@ The heart of the project. C1 and B1 live here.
 **Accept:** fixture `f4-typed-responses` green for all three sources (generic, annotation, OpenAPI).
 **Done:** `ResponseType { name, fields: {name,type}[], source }` on `DataSourceNode` in core (schema regenerated, drift gate green). New `response.ts` parser module: `responseFromCall` recovers the type from a call's generic argument (`axios.get<User[]>`, `useQuery<T>`) or, failing that, the annotation on the nearest enclosing typed variable whose initializer holds the call (`const data: Invoice[] = await fetch(…).then(r => r.json())`), stopping at function boundaries; only property signatures are read (one level, methods skipped). `loadOpenApi`/`linkOpenApiResponses` is a post-pass that fills untyped sources from an OpenAPI 3 JSON spec (`openapi` scan option / CLI `--openapi`), matching `${METHOD} ${endpoint}` with `{id}`→`:id` normalization and `$ref` resolution. Bundle lineage `dataSources` carry `responseType`; `trace` prints it. New `f4-typed-responses` fixture + `GoldenResponse`/`responses` check kind (all three sources). 5 parser unit tests incl. bundle-level; eval 265/0/0, gate OK.
 
-### [ ] 5.6 Git history context
+### [x] 5.6 Git history context
 **Failure modes:** F5
 **Build:** `history` section: last N commits touching matched files (`git log --follow`), PR numbers parsed from merge/squash subjects. Pure `git` subprocess, no network.
 **Accept:** integration test on this repo's own history; graceful empty section outside a git repo.
+**Done:** `gitHistory(root, files, limit)` in agent-sdk — per-file `git log --follow` (via `execFileSync`, no network), commits deduped across files and sorted newest-first by committer time, `parsePrNumber` pulls `#NN` from merge/squash subjects. Any failure (not a repo, git missing, untracked path) yields `[]` — the bundle degrades gracefully. Bundle `history` section (default 5) is populated from the matched component's files + render subtree; `BundleCommit` gains optional `pr` (context-bundle schema regenerated, drift gate green). Integration tests run against this repo's own history; 5 agent-sdk unit tests + a bundle-wiring test. eval 265/0/0, gate OK.
 
 ### [ ] 5.7 MCP server
 **Failure modes:** G1 (surface), pipeline integration
