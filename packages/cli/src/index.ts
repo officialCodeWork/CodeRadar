@@ -16,7 +16,7 @@ import {
   saveGraph,
   traceLineage,
 } from "@coderadar/core";
-import { resolveContext } from "@coderadar/agent-sdk";
+import { buildBundle, resolveContext } from "@coderadar/agent-sdk";
 import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
@@ -203,6 +203,24 @@ program
     }
     if (match.status === "ambiguous") console.log(`ambiguous — ${match.disambiguation}\n`);
     for (const candidate of match.candidates.slice(0, 5)) printMatchCandidate(candidate);
+  });
+
+program
+  .command("bundle")
+  .description("Resolve a ticket into a budgeted context bundle (JSON) for an agent")
+  .argument("<text>", "the ticket text")
+  .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
+  .option("-s, --screenshot", "the ticket has a screenshot attached")
+  .option("-b, --budget <n>", "token budget", "4000")
+  .action((text: string, opts: { graph: string; screenshot?: boolean; budget: string }) => {
+    const graph = loadGraph(opts.graph);
+    const budgetTokens = Number.parseInt(opts.budget, 10);
+    const bundle = buildBundle(
+      graph,
+      { text, ...(opts.screenshot ? { screenshots: 1 } : {}) },
+      { budgetTokens: Number.isNaN(budgetTokens) ? 4000 : budgetTokens },
+    );
+    console.log(JSON.stringify(bundle, null, 2));
   });
 
 program

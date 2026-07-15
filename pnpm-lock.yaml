@@ -39,6 +39,9 @@ importers:
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
+      ts-json-schema-generator:
+        specifier: ^2.9.0
+        version: 2.9.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -107,6 +110,9 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
     devDependencies:
+      '@coderadar/agent-sdk':
+        specifier: workspace:*
+        version: link:../agent-sdk
       '@coderadar/vision':
         specifier: workspace:*
         version: link:../vision
