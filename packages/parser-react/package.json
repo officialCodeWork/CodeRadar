@@ -27,6 +27,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@coderadar/agent-sdk": "workspace:*",
     "@coderadar/vision": "workspace:*",
     "@types/node": "^22.20.1",
     "typescript": "^5.7.0",

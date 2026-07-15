@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.2 — Context-bundle contract
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1
+- **Next step:** 5.3 — Blast radius (reverse traversal)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.2
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
 
 ## What CodeRadar is
@@ -274,7 +274,7 @@ The heart of the project. C1 and B1 live here.
 - Runs the matching engine with all available signals; merges rankings.
 **Accept:** `eval/tickets/` suite (≥ 15 hand-written tickets: 5 visual, 4 textual, 3 behavioral, 3 out-of-domain) — OOD rejection ≥ 0.95, entry-point classification accuracy ≥ 0.90.
 
-### [ ] 5.2 Context-bundle contract
+### [x] 5.2 Context-bundle contract
 **Failure modes:** F1
 **Build:** `ContextBundle` type + JSON Schema (committed, drift-gated): sections `match` (instances + evidence), `lineage` (per-instance sources with patterns/methods), `journeys` (slice around the match, depth 2 default), `blastRadius`, `tests`, `history`, `warnings` (staleness, incomplete flags). Budgeter: `budgetTokens` param; sections trimmed in fixed priority order (match > lineage > blastRadius > journeys > tests > history), each trim recorded in `warnings`.
 **Accept:** golden bundles for 5 ticket evals; every bundle ≤ budget under a tokenizer test at budgets 2k/4k/8k; trim order unit-tested.

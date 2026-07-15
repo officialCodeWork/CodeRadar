@@ -1,0 +1,369 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ContextBundle",
+  "definitions": {
+    "ContextBundle": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "entryPoint": {
+              "$ref": "#/definitions/EntryPoint"
+            }
+          },
+          "required": [
+            "text",
+            "entryPoint"
+          ],
+          "additionalProperties": false
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "matched",
+            "ambiguous",
+            "declined"
+          ]
+        },
+        "match": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleMatch"
+          }
+        },
+        "lineage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleLineageEntry"
+          }
+        },
+        "journeys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JourneyPath"
+          }
+        },
+        "blastRadius": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleImpact"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleTest"
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleCommit"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "tokens": {
+              "type": "number"
+            },
+            "used": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "tokens",
+            "used"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ticket",
+        "status",
+        "match",
+        "lineage",
+        "journeys",
+        "blastRadius",
+        "tests",
+        "history",
+        "warnings",
+        "budget"
+      ],
+      "additionalProperties": false
+    },
+    "EntryPoint": {
+      "type": "string",
+      "enum": [
+        "visual",
+        "textual",
+        "behavioral",
+        "out-of-domain",
+        "unsupported"
+      ],
+      "description": "How CodeRadar should read the ticket (E1/E5/E6/E4). Classification is rule-based + keyword lexicons — no LLM call, so the node is deterministic (G8)."
+    },
+    "BundleMatch": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string"
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "component",
+        "instances",
+        "confidence",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "BundleLineageEntry": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "Component name, or `Name@file:line` for a specific instance."
+        },
+        "dataSources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "endpoint": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "method",
+              "endpoint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "state": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "target",
+        "dataSources",
+        "state",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "JourneyPath": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JourneyStep"
+          }
+        },
+        "end": {
+          "$ref": "#/definitions/JourneyEnd"
+        }
+      },
+      "required": [
+        "steps",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "JourneyStep": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/JourneyStepKind"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string",
+          "description": "Route path (page/navigate), event name, endpoint (fetch), or state name."
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "condition": {
+          "$ref": "#/definitions/EdgeCondition",
+          "description": "Flag/role/branch guarding the edge into this step (populated by step 3.5)."
+        }
+      },
+      "required": [
+        "kind",
+        "nodeId",
+        "label"
+      ],
+      "additionalProperties": false,
+      "description": "One node on a user-journey path, with the condition (if any) that gated it."
+    },
+    "JourneyStepKind": {
+      "type": "string",
+      "enum": [
+        "page",
+        "event",
+        "navigate",
+        "fetch",
+        "state-write",
+        "exit"
+      ]
+    },
+    "SourceLocation": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path relative to the scan root, POSIX separators."
+        },
+        "line": {
+          "type": "number",
+          "description": "1-based line of the declaration."
+        },
+        "endLine": {
+          "type": "number",
+          "description": "1-based end line of the declaration."
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "endLine"
+      ],
+      "additionalProperties": false,
+      "description": "Where a node lives in the codebase."
+    },
+    "EdgeCondition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "flag",
+            "role",
+            "branch",
+            "response"
+          ]
+        },
+        "expression": {
+          "type": "string",
+          "description": "Source text of the condition, e.g. `isEnabled(\"new-billing\")`."
+        }
+      },
+      "required": [
+        "kind",
+        "expression"
+      ],
+      "additionalProperties": false,
+      "description": "A statically-detected condition guarding an edge (feature flag, role, branch)."
+    },
+    "JourneyEnd": {
+      "type": "string",
+      "enum": [
+        "terminal",
+        "cycle",
+        "depth-limit"
+      ],
+      "description": "How a journey path ended: a leaf effect, a revisited page, or the depth cap."
+    },
+    "BundleImpact": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "type": "string"
+        },
+        "relation": {
+          "type": "string"
+        },
+        "distance": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "node",
+        "relation",
+        "distance"
+      ],
+      "additionalProperties": false,
+      "description": "Reverse-traversal impact (step 5.3) — empty until then."
+    },
+    "BundleTest": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": false,
+      "description": "Test coverage (step 5.4) — empty until then."
+    },
+    "BundleCommit": {
+      "type": "object",
+      "properties": {
+        "sha": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha",
+        "subject"
+      ],
+      "additionalProperties": false,
+      "description": "Recent git history (step 5.6) — empty until then."
+    }
+  }
+}

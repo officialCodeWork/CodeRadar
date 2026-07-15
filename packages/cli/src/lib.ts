@@ -10,7 +10,9 @@
 export * from "@coderadar/core";
 export { resolveHookEdges, scanReact, type ScanOptions } from "@coderadar/parser-react";
 export {
+  buildBundle,
   classifyTicket,
+  type ContextBundle,
   type ContextResult,
   type EntryPoint,
   resolveContext,
