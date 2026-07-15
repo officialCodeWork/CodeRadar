@@ -66,8 +66,13 @@ export function runChecks(
   for (const expected of golden.expect.attributions ?? []) {
     const id = `attribution:${expected.component}${expected.instanceAt !== undefined ? `@${expected.instanceAt}` : ""}`;
     const found = traceEndpoints(graph, expected.component, expected.instanceAt);
+    // xfail-marked attributions stay out of the precision/recall tallies: a
+    // known-missing capability must not depress the global lineage metrics
+    // while marked. The unexpected-pass gate forces the marker off the moment
+    // the capability lands, which restores tally counting.
+    const tally = expected.expectedFail === undefined;
     if (found === null) {
-      attribution.falseNegatives += expected.endpoints.length;
+      if (tally) attribution.falseNegatives += expected.endpoints.length;
       finalize("attributions", id, false, expected.expectedFail, "trace target not found in graph");
       continue;
     }
@@ -75,9 +80,11 @@ export function runChecks(
     const got = new Set(found);
     const missing = [...want].filter((e) => !got.has(e));
     const extra = [...got].filter((e) => !want.has(e));
-    attribution.truePositives += want.size - missing.length;
-    attribution.falseNegatives += missing.length;
-    attribution.falsePositives += extra.length;
+    if (tally) {
+      attribution.truePositives += want.size - missing.length;
+      attribution.falseNegatives += missing.length;
+      attribution.falsePositives += extra.length;
+    }
     finalize(
       "attributions",
       id,
