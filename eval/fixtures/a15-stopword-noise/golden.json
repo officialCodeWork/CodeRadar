@@ -1,0 +1,17 @@
+{
+  "failureMode": "A15",
+  "note": "Stopword & rare-literal noise (field-found on Grafana, 0.4.0): a component rendering a bare stopword ('BY') is a rare literal whose high IDF let it outrank the component that renders the whole phrase, and a stopword-only query ('The') returned confident matches. Fix (6F.9): drop stopword-only query terms and reject stopword-only rendered-text targets, so the exact-phrase component wins and a stopword query declines no-signal.",
+  "expect": {
+    "components": [
+      { "name": "OrderBySection", "instances": 0 },
+      { "name": "SilencesFilter", "instances": 0 },
+      { "name": "AckPanel", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["Find silences by matcher"], "status": "ok", "top": "SilencesFilter" },
+      { "terms": ["silences"], "status": "ok", "top": "SilencesFilter" },
+      { "terms": ["The"], "status": "declined" },
+      { "terms": ["the", "acknowledge"], "status": "ok", "top": "AckPanel" }
+    ]
+  }
+}
