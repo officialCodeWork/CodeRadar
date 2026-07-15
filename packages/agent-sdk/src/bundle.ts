@@ -11,6 +11,7 @@
  */
 import {
   blastRadius,
+  type DataSourceNode,
   type ImpactNode,
   type JourneyPath,
   journeys,
@@ -29,10 +30,17 @@ export interface BundleMatch {
   evidence: string[];
 }
 
+export interface BundleDataSource {
+  method: string | null;
+  endpoint: string;
+  /** Response shape (5.5, F4), when recoverable — name + one level of fields. */
+  responseType?: { name: string; fields: { name: string; type: string }[]; source: string };
+}
+
 export interface BundleLineageEntry {
   /** Component name, or `Name@file:line` for a specific instance. */
   target: string;
-  dataSources: { method: string | null; endpoint: string }[];
+  dataSources: BundleDataSource[];
   state: string[];
   events: string[];
 }
@@ -136,10 +144,7 @@ export function buildBundle(
     if (definitionLineage !== undefined) {
       bundle.lineage.push({
         target: top.component.name,
-        dataSources: definitionLineage.dataSources.map((d) => ({
-          method: d.method,
-          endpoint: d.endpoint,
-        })),
+        dataSources: definitionLineage.dataSources.map(bundleDataSource),
         state: definitionLineage.state.map((s) => s.name),
         events: definitionLineage.events.map((e) => e.event),
       });
@@ -149,7 +154,7 @@ export function buildBundle(
       if (instLineage === undefined || instLineage.dataSources.length === 0) continue;
       bundle.lineage.push({
         target: `${top.component.name}@${instance.loc.file}:${instance.loc.line}`,
-        dataSources: instLineage.dataSources.map((d) => ({ method: d.method, endpoint: d.endpoint })),
+        dataSources: instLineage.dataSources.map(bundleDataSource),
         state: [],
         events: [],
       });
@@ -185,6 +190,15 @@ export function buildBundle(
   if (incomplete > 0) bundle.warnings.push(`${incomplete} node(s) could not be fully parsed`);
 
   return trimToBudget(bundle, budgetTokens);
+}
+
+/** Project a data-source node into the bundle shape, carrying its response type when present. */
+function bundleDataSource(d: DataSourceNode): BundleDataSource {
+  return {
+    method: d.method,
+    endpoint: d.endpoint,
+    ...(d.responseType !== undefined ? { responseType: d.responseType } : {}),
+  };
 }
 
 /** Component ids in the render subtree of `rootId` (itself plus renders → instance-of descendants). */

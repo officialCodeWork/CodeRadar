@@ -21,6 +21,7 @@ Requires Node ≥ 20.
 
 ```bash
 ui-lineage scan ./src -o app.graph.json          # scan a React app into a graph
+ui-lineage scan ./src --openapi openapi.json     # …and link data sources to response types
 ui-lineage find "All invoices" -g app.graph.json # text → component
 ui-lineage find "invoice widget" -a aliases.yaml # resolve business vocabulary
 ui-lineage trace InvoicesPage -g app.graph.json  # component → data/state/events

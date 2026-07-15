@@ -158,23 +158,7 @@
         "dataSources": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "method": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "endpoint": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "method",
-              "endpoint"
-            ],
-            "additionalProperties": false
+            "$ref": "#/definitions/BundleDataSource"
           }
         },
         "state": {
@@ -195,6 +179,62 @@
         "dataSources",
         "state",
         "events"
+      ],
+      "additionalProperties": false
+    },
+    "BundleDataSource": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "responseType": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "fields",
+            "source"
+          ],
+          "additionalProperties": false,
+          "description": "Response shape (5.5, F4), when recoverable — name + one level of fields."
+        }
+      },
+      "required": [
+        "method",
+        "endpoint"
       ],
       "additionalProperties": false
     },

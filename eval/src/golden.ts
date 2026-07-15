@@ -104,6 +104,21 @@ export interface GoldenCondition {
   expectedFail?: string;
 }
 
+/** A response-schema assertion (step 5.5, failure mode F4): a data source's response type. */
+export interface GoldenResponse {
+  /** Endpoint the data source resolves to. */
+  endpoint: string;
+  /** HTTP method, to disambiguate same-endpoint sources. */
+  method?: string;
+  /** Expected response-type name (e.g. "User[]"). */
+  name: string;
+  /** Where the type must have come from. */
+  from?: "generic" | "annotation" | "openapi";
+  /** Field names that must appear in the response type. */
+  fields?: string[];
+  expectedFail?: string;
+}
+
 /** A test-coverage assertion (step 5.4, failure mode F3): covered-by edges. */
 export interface GoldenCoverage {
   component: string;
@@ -155,6 +170,8 @@ export interface Golden {
     baseUrls?: string[];
     apiWrappers?: string[];
     i18n?: { localeGlobs: string[]; defaultLocale: string };
+    /** OpenAPI spec path (relative to the app dir) for response-schema linking (5.5). */
+    openapi?: string;
   };
   expect: {
     components?: GoldenComponent[];
@@ -176,6 +193,8 @@ export interface Golden {
     blast?: GoldenBlast[];
     /** Test coverage via covered-by edges (step 5.4, F3). */
     coverage?: GoldenCoverage[];
+    /** Response types on data sources (step 5.5, F4). */
+    responses?: GoldenResponse[];
   };
 }
 
@@ -195,7 +214,8 @@ export interface CheckResult {
     | "conditions"
     | "externals"
     | "blast"
-    | "coverage";
+    | "coverage"
+    | "responses";
   status: CheckStatus;
   detail?: string;
 }

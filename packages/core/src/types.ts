@@ -169,6 +169,27 @@ export type EndpointResolution =
   | "partial" // known shape with :param placeholders, e.g. "/api/users/:id"
   | "none"; // nothing statically known ("<dynamic>")
 
+/** One field of a response type — a name and its type as written. */
+export interface ResponseField {
+  name: string;
+  /** Field type text, e.g. "string", "number | null", "Address". */
+  type: string;
+}
+
+/**
+ * The shape a data source returns (TRACKER step 5.4→5.5, failure mode F4).
+ * Resolved from a call's generic argument (`useQuery<User[]>`), a type
+ * annotation on the variable the result lands in, or an OpenAPI spec matched by
+ * endpoint. One level deep only — fields, not their nested shapes.
+ */
+export interface ResponseType {
+  /** Named type when resolvable ("User", "User[]"); otherwise the type text. */
+  name: string;
+  fields: ResponseField[];
+  /** Where the type was recovered from. */
+  source: "generic" | "annotation" | "openapi";
+}
+
 /** An external data origin: an HTTP endpoint, GraphQL operation, or socket. */
 export interface DataSourceNode extends BaseNode {
   kind: "data-source";
@@ -189,6 +210,8 @@ export interface DataSourceNode extends BaseNode {
    * the identity used for cache-sharing analysis (C7) alongside the endpoint.
    */
   queryKey?: string;
+  /** The response shape this source returns, when recoverable (5.5, F4). */
+  responseType?: ResponseType;
 }
 
 export type StateKind =
