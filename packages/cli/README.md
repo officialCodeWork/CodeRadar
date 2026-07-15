@@ -48,6 +48,30 @@ its distance — so a change can be reviewed for what it might break:
   ▸ /users  • onClick()  ⇢ fetch /api/users
 ```
 
+## MCP server
+
+`ui-lineage` also ships an MCP (Model Context Protocol) server, so an agent can
+query a pre-built graph over stdio. Build a graph, then point an MCP client at
+the `ui-lineage-mcp` bin with the graph path in `CODERADAR_GRAPH`:
+
+```jsonc
+// e.g. an MCP client config
+{
+  "mcpServers": {
+    "coderadar": {
+      "command": "ui-lineage-mcp",
+      "env": { "CODERADAR_GRAPH": "/abs/path/to/app.graph.json" }
+    }
+  }
+}
+```
+
+Tools: `resolve_context(ticket)` (→ a budgeted context bundle), `find_component(terms)`,
+`trace_lineage(id)`, `journeys(start, depth?)`, `blast_radius(node, depth?)`. Every
+tool returns a QueryResult envelope — ranked candidates with confidence, or an
+honest `ambiguous` / `declined`. There is no LLM in the server; it is a
+deterministic context provider.
+
 ## Library
 
 ```ts

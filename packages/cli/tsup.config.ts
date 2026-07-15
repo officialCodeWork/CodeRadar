@@ -6,6 +6,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts", // CLI bin (keeps its #!/usr/bin/env node shebang)
+    mcp: "src/mcp.ts", // ui-lineage-mcp bin (MCP stdio server)
     lib: "src/lib.ts", // library entry
     vision: "src/vision.ts", // ui-lineage/vision subpath
   },
@@ -18,5 +19,5 @@ export default defineConfig({
   sourcemap: true,
   noExternal: [/^@coderadar\//],
   // @anthropic-ai/sdk is a lazy, optional runtime dep of the vision adapter.
-  external: ["ts-morph", "yaml", "commander", "@anthropic-ai/sdk"],
+  external: ["ts-morph", "yaml", "commander", "@anthropic-ai/sdk", "@modelcontextprotocol/sdk", "zod"],
 });

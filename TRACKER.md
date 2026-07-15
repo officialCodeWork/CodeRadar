@@ -4,10 +4,10 @@
 
 ## Status
 
-- **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.7 — MCP server (→ Gate 5)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.6
-- **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
+- **Current phase:** 6 — Lifecycle, scale, hardening
+- **Next step:** 6.1 (Phase 5 complete — Gate 5 passed, M5 reached)
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7
+- **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
 
@@ -303,10 +303,11 @@ The heart of the project. C1 and B1 live here.
 **Accept:** integration test on this repo's own history; graceful empty section outside a git repo.
 **Done:** `gitHistory(root, files, limit)` in agent-sdk — per-file `git log --follow` (via `execFileSync`, no network), commits deduped across files and sorted newest-first by committer time, `parsePrNumber` pulls `#NN` from merge/squash subjects. Any failure (not a repo, git missing, untracked path) yields `[]` — the bundle degrades gracefully. Bundle `history` section (default 5) is populated from the matched component's files + render subtree; `BundleCommit` gains optional `pr` (context-bundle schema regenerated, drift gate green). Integration tests run against this repo's own history; 5 agent-sdk unit tests + a bundle-wiring test. eval 265/0/0, gate OK.
 
-### [ ] 5.7 MCP server
+### [x] 5.7 MCP server
 **Failure modes:** G1 (surface), pipeline integration
 **Build:** `@coderadar/mcp` exposing tools: `resolve_context(ticket)`, `find_component(terms)`, `trace_lineage(id)`, `journeys(id, depth)`, `blast_radius(id)` — thin wrappers over agent-sdk against a pre-built graph (path from env/config). Tool descriptions written for agent consumption (when to use which, what `ambiguous` means, that `disambiguation` should be relayed to a human).
 **Accept:** MCP integration test via stdio client: scan fixture → each tool returns schema-valid envelopes; `ambiguous`/`declined` statuses round-trip. **Gate 5 passes.** *CodeRadar is now pluggable into the multi-agent system.*
+**Done:** new `@coderadar/mcp` package (MCP SDK 1.29). `createServer(graph)` registers all five tools over `@modelcontextprotocol/sdk`'s `McpServer` with zod input schemas and agent-facing descriptions (`resolve_context` returns the full budgeted `ContextBundle`; each tool returns its QueryResult envelope as JSON text; descriptions state that `ambiguous`/`disambiguation` goes to a human). `resolve_context` = `buildBundle`; `find_component`/`trace_lineage`/`journeys`/`blast_radius` wrap core. Bin `coderadar-mcp` loads a graph from `CODERADAR_GRAPH` (or argv) and serves stdio; also shipped in the published `ui-lineage` bundle as the `ui-lineage-mcp` bin (MCP SDK + zod kept external). Integration test via a real stdio `Client`: lists all five tools and round-trips `ok`/`ambiguous`/`declined` over `a4-generic-text` (6 tests). **Gate 5 passed. M5 reached — ticket in → budgeted context bundle out, over MCP.**
 
 ---
 
@@ -368,6 +369,6 @@ Sketch level — detail before starting the phase, after v1 feedback.
 | M2 | **Headline correct:** per-instance API attribution (C1) + handler resolution (B1) | 2 |
 | M3 | n-level journeys, lazily expanded | 3 |
 | M4 | Screenshot/text → ranked, calibrated, honest matches | 4 |
-| M5 | **Pluggable node:** ticket in → budgeted context bundle out, over MCP | 5 |
+| M5 ✅ | **Pluggable node:** ticket in → budgeted context bundle out, over MCP | 5 |
 | M6 | Production-grade: incremental, fast, deterministic, versioned | 6 |
 | M7 | Full-stack lineage: pixel → backend handler | 7 |

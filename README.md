@@ -108,9 +108,11 @@ Try it immediately on the bundled example: `node packages/cli/dist/index.js scan
 
 | Package | Purpose |
 |---------|---------|
-| [`@coderadar/core`](packages/core) | The `LineageGraph` schema + query primitives (`matchComponentsByText`, `traceLineage`) |
-| [`@coderadar/parser-react`](packages/parser-react) | ts-morph static parser — components (incl. `memo`/`forwardRef`), hooks, `fetch`/`axios`/react-query/SWR endpoints, `useState`/`useSelector`/`useContext`, JSX event handlers, rendered-text extraction |
-| [`@coderadar/cli`](packages/cli) | `coderadar scan` · `find` · `trace` |
+| [`@coderadar/core`](packages/core) | The `LineageGraph` schema + query primitives (`matchComponents`, `traceLineage`, `journeys`, `blastRadius`) |
+| [`@coderadar/parser-react`](packages/parser-react) | ts-morph static parser — components (incl. `memo`/`forwardRef`), hooks, `fetch`/`axios`/react-query/SWR endpoints, `useState`/`useSelector`/`useContext`, JSX event handlers, rendered-text extraction, test coverage, response types |
+| [`@coderadar/agent-sdk`](packages/agent-sdk) | `resolveContext` / `buildBundle` — classifies a ticket and assembles a budgeted context bundle (deterministic, no LLM) |
+| [`@coderadar/mcp`](packages/mcp) | MCP server exposing `resolve_context` · `find_component` · `trace_lineage` · `journeys` · `blast_radius` over stdio |
+| [`ui-lineage`](packages/cli) | Published CLI + library bundle: `scan` · `find` · `trace` · `journeys` · `impact` · `resolve` · `bundle`, plus the `ui-lineage-mcp` server bin |
 
 ### What the graph captures
 
