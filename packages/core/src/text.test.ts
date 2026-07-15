@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasMatchSignal, normalizeText, textMatches } from "./text.js";
+import { hasMatchSignal, isLowSignal, normalizeText, textMatches } from "./text.js";
 
 describe("normalizeText", () => {
   it("lowercases, strips punctuation, collapses whitespace", () => {
@@ -58,5 +58,22 @@ describe("hasMatchSignal", () => {
     expect(hasMatchSignal("save")).toBe(true);
     expect(hasMatchSignal("* item in cart")).toBe(true);
     expect(hasMatchSignal("ok")).toBe(true);
+  });
+});
+
+describe("isLowSignal (A15 — stopword/punctuation targets)", () => {
+  it("flags empty, punctuation-only, and stopword-only strings", () => {
+    expect(isLowSignal("")).toBe(true);
+    expect(isLowSignal(normalizeText("|"))).toBe(true);
+    expect(isLowSignal(normalizeText("BY"))).toBe(true); // rare literal → no signal
+    expect(isLowSignal(normalizeText("The"))).toBe(true);
+    expect(isLowSignal(normalizeText("of the"))).toBe(true);
+    expect(isLowSignal(normalizeText("This"))).toBe(true); // folds to "thi"
+  });
+
+  it("keeps strings with at least one discriminating token", () => {
+    expect(isLowSignal(normalizeText("silences"))).toBe(false);
+    expect(isLowSignal(normalizeText("Find silences by matcher"))).toBe(false);
+    expect(isLowSignal(normalizeText("the invoice"))).toBe(false);
   });
 });

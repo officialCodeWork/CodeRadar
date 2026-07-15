@@ -30,6 +30,7 @@ import {
 } from "ts-morph";
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
+import { decodeEntities } from "./entities.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { linkOpenApiResponses, loadOpenApi, responseFromCall } from "./response.js";
 import { detectRoutes } from "./routes.js";
@@ -270,7 +271,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
     version: 2,
     root,
     generatedAt: new Date().toISOString(),
-    generator: "ui-lineage@0.4.0",
+    generator: "ui-lineage@0.4.1",
     nodes: [...nodes.values()],
     edges,
   };
@@ -368,8 +369,12 @@ function extractRenderedText(fn: Node): RenderedText[] {
     entries.set(`${entry.source}:${entry.text}:${entry.branch ?? ""}`, entry);
   };
 
+  // JSX text and quoted attribute values are HTML-decoded by React at render
+  // time, so decode entities here too (failure mode A16) — otherwise `&nbsp;`,
+  // `&gt;`, `&#34;` survive as junk tokens ("nbsp", "gt", "34"). JS string and
+  // template literals below are NOT JSX-decoded, so they stay untouched.
   for (const jsxText of fn.getDescendantsOfKind(SyntaxKind.JsxText)) {
-    const text = jsxText.getText().replace(/\s+/g, " ").trim();
+    const text = decodeEntities(jsxText.getText()).replace(/\s+/g, " ").trim();
     if (text.length === 0) continue;
     add({ text, source: "jsx", ...branchTag(jsxText, fn) });
   }
@@ -378,7 +383,7 @@ function extractRenderedText(fn: Node): RenderedText[] {
     if (!TEXT_ATTRIBUTES.has(attr.getNameNode().getText())) continue;
     const init = attr.getInitializer();
     if (init !== undefined && Node.isStringLiteral(init)) {
-      const text = init.getLiteralValue().trim();
+      const text = decodeEntities(init.getLiteralValue()).trim();
       if (text.length > 0) add({ text, source: "attribute", ...branchTag(attr, fn) });
     }
   }

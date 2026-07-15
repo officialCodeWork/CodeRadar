@@ -61,6 +61,39 @@ export function textMatches(haystack: string, needle: string): boolean {
   return haystack.includes(needle) || needle.includes(haystack);
 }
 
+/**
+ * Common English function words that carry no discriminating match signal.
+ * Folded through `foldPlural` at load so they compare equal to normalized text
+ * (which is also folded) — e.g. "this" → "thi", "does" → "doe".
+ */
+const STOPWORDS = new Set(
+  [
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
+    "can", "could", "did", "do", "does", "for", "from", "had", "has", "have",
+    "he", "her", "his", "i", "if", "in", "into", "is", "it", "its", "just",
+    "may", "me", "might", "must", "my", "no", "not", "of", "on", "only", "or",
+    "our", "out", "over", "per", "she", "should", "so", "such", "than", "that",
+    "the", "their", "them", "then", "these", "they", "this", "those", "to",
+    "up", "us", "via", "was", "we", "were", "will", "with", "would", "you",
+    "your",
+  ].map(foldPlural),
+);
+
+/**
+ * True when a normalized string carries no *discriminating* signal: it is
+ * empty, punctuation-only (A14), or nothing but stopwords ("the", "by").
+ * Such a string is both a poor query term (matches everything) and a poor
+ * match target — a component rendering a bare "BY" is a rare literal whose
+ * high IDF would otherwise let it outrank the component that renders the whole
+ * phrase (failure mode A15, field-found on Grafana). `matchComponents` drops
+ * these from query terms and rejects them as rendered-text targets.
+ */
+export function isLowSignal(normalized: string): boolean {
+  if (!hasMatchSignal(normalized)) return true;
+  const tokens = normalized.split(" ").filter((t) => t.length > 0 && t !== "*");
+  return tokens.length > 0 && tokens.every((t) => STOPWORDS.has(t));
+}
+
 function foldPlural(token: string): string {
   if (token.length > 4 && token.endsWith("ies")) return `${token.slice(0, -3)}y`;
   if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) return token.slice(0, -1);

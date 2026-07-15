@@ -186,7 +186,29 @@ export function buildBundle(
       if (test !== undefined) testFiles.add(test.loc.file);
     }
     bundle.tests = [...testFiles].sort().map((file) => ({ file }));
-    if (!topCovered) bundle.warnings.push(`untested — no test renders ${top.component.name}`);
+    if (!topCovered) {
+      // Graph-level coverage health (6F.6, F3): when test files exist but almost
+      // no component carries a covered-by edge, coverage mapping is effectively
+      // blind — a per-component "untested" is then a near-universal FALSE signal
+      // (the field-found noise: 1 covered-by edge across a whole app). Downgrade
+      // to one honest graph-level note. A genuinely test-free repo (no test
+      // nodes at all) keeps the accurate "untested".
+      let componentCount = 0;
+      let testCount = 0;
+      for (const node of graph.nodes) {
+        if (node.kind === "component") componentCount += 1;
+        else if (node.kind === "test") testCount += 1;
+      }
+      const coveredComponents = new Set<string>();
+      for (const edge of graph.edges) if (edge.kind === "covered-by") coveredComponents.add(edge.from);
+      const coverageUnmapped =
+        testCount > 0 && componentCount > 0 && coveredComponents.size / componentCount < 0.05;
+      bundle.warnings.push(
+        coverageUnmapped
+          ? `coverage-unmapped — only ${coveredComponents.size}/${componentCount} components have mapped test coverage; "untested" is unreliable for this graph`
+          : `untested — no test renders ${top.component.name}`,
+      );
+    }
 
     // Git history (5.6): recent commits touching the matched component's files.
     const files = new Set<string>([top.component.loc.file]);
