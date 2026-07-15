@@ -265,7 +265,11 @@ export interface Scorecard {
     entryPointAccuracy: number | null;
     /** Fraction of out-of-domain tickets correctly declined (step 5.1). */
     oodRejection: number | null;
+    /** Fixtures whose two independent scans were byte-identical (6.3, G8). */
+    determinismStablePct: number | null;
   };
+  /** Fixtures whose second scan differed from the first (6.3) — empty when clean. */
+  determinismFailures?: string[];
 }
 
 export interface Thresholds {

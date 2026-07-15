@@ -4,9 +4,9 @@
 
 ## Status
 
-- **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** publish 0.4.1 to the tester (all shippable fixes: 6F.6–6F.10 + visualizer). 6F.6 detection half remains blocked on a real failing test file — its defensive `coverage-unmapped` half shipped.
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half) · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
+- **Current phase:** 6 — Lifecycle, scale, hardening (6F field-hardening done bar the data-blocked 6F.6 detection half)
+- **Next step:** 6.5 generated/vendored classification & PII policy, then 6.4 version skew, 6.1 incremental re-scan, 6.2 scale (bench repo). 6.3 determinism landed first as it de-risks the rest (eval now hard-gates two-run byte-identity). Publish 0.4.1 to the tester still pending (needs npm creds).
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.3** · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -323,10 +323,29 @@ The heart of the project. C1 and B1 live here.
 **Build:** `eval/bench/` generator (2,000+ file synthetic app with realistic import depth); profile; apply: lazy ts-morph project loading, file-batch parallelism (worker threads), tree-sitter fast path for the text-extraction pass if ts-morph remains the bottleneck. Perf budget asserted in nightly CI.
 **Accept:** full scan < 5 min, peak RSS < 4 GB on the bench repo.
 
-### [ ] 6.3 Determinism
+### [x] 6.3 Determinism
 **Failure modes:** G8
 **Build:** stable ordering everywhere (nodes, edges, candidates — explicit sort keys, no map-iteration order leaks); vision/OCR results cached by image hash; `generatedAt` excluded from equality. Determinism check in the eval runner (two runs, byte-diff).
 **Accept:** double-run byte-identical on all fixtures + bench repo.
+**Done:** `scanReact` now iterates source files in a stable path order (new
+`sortedSourceFiles` — ts-morph returns glob-enumeration order, which varies by
+platform) across all three file passes, and returns nodes sorted by `id` + edges
+sorted by a total-order key over every identifying field (`edgeSortKey`).
+`resolveHookEdges` re-sorts and dedups after rewriting `unresolved-hook:`
+placeholders (a rewrite can collide two edges onto one hook id). Candidate
+ranking gains a final `id` tiebreak so same-named components in different files
+rank deterministically. The eval runner scans every fixture **twice** and
+byte-compares (dropping only `generatedAt`): new `determinismStablePct` metric,
+printed each run and a **hard gate** — any non-deterministic fixture fails the
+run outright. 4 new parser-react unit tests (two-run byte-identical · nodes in id
+order · edges in key order · no duplicate edges). Full suite green; eval
+304/0/0/0, determinism 1.000, all metrics 1.000. One fragile unit assertion in
+`queryfn.test.ts` (relied on node insertion order to find the react-query
+`/api/stats` source ahead of the raw fetch it wraps) rewritten to assert the
+react-query resolution *exists*, order-independently. Bench-repo half of the
+accept criterion lands with 6.2. Vision/OCR image-hash caching deferred — the
+eval path exercises no live OCR, so it isn't a determinism risk today; revisit if
+6.4/vision work reintroduces it.
 
 ### [ ] 6.4 Version skew & rename tracking
 **Failure modes:** G3, A11

@@ -74,6 +74,8 @@ function main(): void {
     .sort();
 
   const results: FixtureResult[] = [];
+  const determinismFailures: string[] = [];
+  let determinismChecked = 0;
   for (const name of fixtureNames) {
     const fixtureDir = path.join(fixturesDir, name);
     const goldenPath = path.join(fixtureDir, "golden.json");
@@ -83,11 +85,22 @@ function main(): void {
     }
     const golden = JSON.parse(fs.readFileSync(goldenPath, "utf-8")) as Golden;
     const appDir = path.resolve(fixtureDir, golden.app ?? "./app");
-    const graph = resolveHookEdges(scanReact({ root: appDir, ...(golden.scan ?? {}) }));
+    const scanOpts = { root: appDir, ...(golden.scan ?? {}) };
+    const graph = resolveHookEdges(scanReact(scanOpts));
     results.push(runChecks(name, golden, graph, loadAliases(fixtureDir)));
+
+    // Determinism (6.3, G8): a second independent scan of the same tree must
+    // serialize byte-for-byte identically, ignoring only the wall-clock
+    // `generatedAt`. Catches map-iteration/glob-order leaks before they ship.
+    const second = resolveHookEdges(scanReact(scanOpts));
+    determinismChecked += 1;
+    if (canonicalGraph(graph) !== canonicalGraph(second)) determinismFailures.push(name);
   }
 
-  const scorecard = buildScorecard(results);
+  const scorecard = buildScorecard(results, {
+    failures: determinismFailures,
+    checked: determinismChecked,
+  });
   fs.writeFileSync(path.join(evalDir, "scorecard.json"), JSON.stringify(scorecard, null, 2));
   if (record) {
     fs.appendFileSync(
@@ -140,7 +153,16 @@ function calibrate(results: FixtureResult[]): void {
   );
 }
 
-function buildScorecard(results: FixtureResult[]): Scorecard {
+/** Serialize a graph for byte-comparison, dropping only the volatile timestamp (6.3). */
+function canonicalGraph(graph: { generatedAt?: string }): string {
+  const { generatedAt: _drop, ...rest } = graph;
+  return JSON.stringify(rest);
+}
+
+function buildScorecard(
+  results: FixtureResult[],
+  determinism: { failures: string[]; checked: number },
+): Scorecard {
   let pass = 0;
   let fail = 0;
   let xfail = 0;
@@ -196,8 +218,13 @@ function buildScorecard(results: FixtureResult[]): Scorecard {
         okAnswers.length > 0
           ? round(okAnswers.filter((o) => !o.correct).length / okAnswers.length)
           : null,
+      determinismStablePct:
+        determinism.checked > 0
+          ? round((determinism.checked - determinism.failures.length) / determinism.checked)
+          : null,
       ...runTickets(),
     },
+    ...(determinism.failures.length > 0 ? { determinismFailures: determinism.failures } : {}),
   };
 }
 
@@ -223,6 +250,10 @@ function print(scorecard: Scorecard): void {
   console.log(
     `ticket entry-point accuracy=${fmt(s.entryPointAccuracy)} · OOD rejection=${fmt(s.oodRejection)}`,
   );
+  console.log(`determinism (two-run byte-identical)=${fmt(s.determinismStablePct)}`);
+  if (scorecard.determinismFailures !== undefined && scorecard.determinismFailures.length > 0) {
+    console.log(`  non-deterministic fixtures: ${scorecard.determinismFailures.join(", ")}`);
+  }
 }
 
 function gate(scorecard: Scorecard): void {
@@ -253,6 +284,12 @@ function gate(scorecard: Scorecard): void {
     s.poisonRate > thresholds.maxPoisonRate
   ) {
     violations.push(`poisonRate ${s.poisonRate} > max ${thresholds.maxPoisonRate}`);
+  }
+  // Determinism is a hard gate (6.3, G8): any fixture that scans differently
+  // twice fails the run outright — a non-deterministic graph breaks the
+  // scan/query contract regardless of how the metrics score.
+  if (scorecard.determinismFailures !== undefined && scorecard.determinismFailures.length > 0) {
+    violations.push(`non-deterministic scans: ${scorecard.determinismFailures.join(", ")}`);
   }
 
   if (violations.length > 0) {
