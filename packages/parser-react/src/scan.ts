@@ -700,6 +700,12 @@ function extractBodyFacts(
       addEdge({ from: ownerId, to: zustandId, kind: "reads-state" });
       continue;
     }
+    const rtkSource = stores.rtkHooks.get(callee);
+    if (rtkSource !== undefined) {
+      // const { data } = useGetUsersQuery() — this component consumes the endpoint.
+      addEdge({ from: ownerId, to: rtkSource, kind: "fetches-from" });
+      continue;
+    }
     const thunkSources = stores.thunkSources.get(callee);
     if (thunkSources !== undefined) {
       // dispatch(fetchUsers()) — this component initiates the fetch.
@@ -1026,6 +1032,11 @@ interface StoreRegistry {
   actionSlices: Map<string, string>;
   /** createAsyncThunk name → the slice StateNode its extraReducers populate. */
   thunkSlices: Map<string, string>;
+  /**
+   * RTK Query generated hook name (useGetUsersQuery, usePayInvoiceMutation,
+   * useLazy…Query) → the data-source node id its endpoint resolves to (6F.4).
+   */
+  rtkHooks: Map<string, string>;
 }
 
 /**
@@ -1049,6 +1060,7 @@ function detectStores(
     thunkSources: new Map(),
     actionSlices: new Map(),
     thunkSlices: new Map(),
+    rtkHooks: new Map(),
   };
 
   const ensureDataSource = (call: Node, file: string): string | null => {
@@ -1141,6 +1153,10 @@ function detectStores(
           const dsId = ensureDataSource(call, file);
           if (dsId !== null) addEdge({ from: dsId, to: stateId, kind: "writes-state" });
         }
+      } else if (callee === "createApi" || callee.endsWith(".injectEndpoints")) {
+        // RTK Query API slices (TRACKER 6F.4, failure modes B2/C5): the field
+        // run had ~40 injectEndpoints files and 0 data-source nodes.
+        rtkEndpoints(init, file, registry, nodes);
       }
     }
   }
@@ -1170,6 +1186,127 @@ function detectStores(
   }
 
   return registry;
+}
+
+/**
+ * RTK Query extraction (TRACKER 6F.4, failure modes B2/C5). `createApi`
+ * declares the base (a `fetchBaseQuery` baseUrl) and optionally endpoints;
+ * `api.injectEndpoints` adds endpoints to an imported base from any file.
+ * Every `builder.query`/`builder.mutation` becomes a data source whose
+ * endpoint joins the base's baseUrl, and its generated hooks
+ * (`useGetUsersQuery`, `usePayInvoiceMutation`, `useLazy…Query`) register so
+ * component call sites wire `fetches-from` edges.
+ */
+function rtkEndpoints(
+  init: CallExpression,
+  file: string,
+  registry: StoreRegistry,
+  nodes: Map<string, LineageNode>,
+): void {
+  const base = rtkBaseCall(init, 0);
+  if (base === null) return;
+  const baseUrl = rtkBaseUrl(base);
+
+  const config = init.getArguments()[0];
+  const endpointsFn = config !== undefined ? propertyInitializer(config, "endpoints") : undefined;
+  const endpointsObject = returnedExpression(endpointsFn);
+  if (endpointsObject === undefined || !Node.isObjectLiteralExpression(endpointsObject)) return;
+
+  for (const property of endpointsObject.getProperties()) {
+    if (!Node.isPropertyAssignment(property)) continue;
+    const endpointCall = property.getInitializer();
+    if (endpointCall === undefined || !Node.isCallExpression(endpointCall)) continue;
+    const builderExpr = endpointCall.getExpression();
+    if (!Node.isPropertyAccessExpression(builderExpr)) continue;
+    const opKind = builderExpr.getName();
+    if (opKind !== "query" && opKind !== "mutation") continue;
+
+    const endpointConfig = endpointCall.getArguments()[0];
+    const queryFn =
+      endpointConfig !== undefined ? propertyInitializer(endpointConfig, "query") : undefined;
+    const returned = returnedExpression(queryFn);
+    let urlNode: Node | undefined = returned;
+    let method = opKind === "mutation" ? "POST" : "GET";
+    if (returned !== undefined && Node.isObjectLiteralExpression(returned)) {
+      urlNode = propertyInitializer(returned, "url");
+      const methodValue = resolveStringValue(propertyInitializer(returned, "method"), 0);
+      if (methodValue !== null) method = methodValue.toUpperCase();
+    }
+    const resolved = resolveEndpoint(urlNode, []);
+    const endpoint =
+      resolved.resolved === "none" ? resolved.endpoint : joinBaseUrl(baseUrl, resolved.endpoint);
+
+    const dsId = nodeId("data-source", file, `rtk-query:${endpoint}`);
+    if (!nodes.has(dsId)) {
+      nodes.set(dsId, {
+        id: dsId,
+        kind: "data-source",
+        name: endpoint,
+        loc: locOf(property, file),
+        sourceKind: "rtk-query",
+        method,
+        endpoint,
+        raw: resolved.raw,
+        resolved: resolved.resolved,
+      });
+    }
+    const pascal = property.getName().charAt(0).toUpperCase() + property.getName().slice(1);
+    registry.rtkHooks.set(`use${pascal}${opKind === "query" ? "Query" : "Mutation"}`, dsId);
+    if (opKind === "query") registry.rtkHooks.set(`useLazy${pascal}Query`, dsId);
+  }
+}
+
+/**
+ * Resolve `createApi(...)` for an api expression: the call itself, or —
+ * for `api.injectEndpoints(...)` — the (possibly imported) receiver's
+ * declaration, following chained injectEndpoints up to a small hop budget.
+ */
+function rtkBaseCall(init: CallExpression, hop: number): CallExpression | null {
+  if (hop > 3) return null;
+  const expr = init.getExpression();
+  if (expr.getText() === "createApi") return init;
+  if (!Node.isPropertyAccessExpression(expr) || expr.getName() !== "injectEndpoints") return null;
+  const receiver = expr.getExpression();
+  if (!Node.isIdentifier(receiver)) return null;
+  for (const declaration of receiver.getDefinitionNodes()) {
+    if (!Node.isVariableDeclaration(declaration)) continue;
+    const declInit = declaration.getInitializer();
+    if (declInit === undefined || !Node.isCallExpression(declInit)) continue;
+    const found = rtkBaseCall(declInit, hop + 1);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+/** The baseUrl configured on a createApi's fetchBaseQuery, or "". */
+function rtkBaseUrl(createApiCall: CallExpression): string {
+  const config = createApiCall.getArguments()[0];
+  const baseQuery = config !== undefined ? propertyInitializer(config, "baseQuery") : undefined;
+  if (baseQuery === undefined || !Node.isCallExpression(baseQuery)) return "";
+  const baseConfig = baseQuery.getArguments()[0];
+  const url = baseConfig !== undefined ? propertyInitializer(baseConfig, "baseUrl") : undefined;
+  return resolveStringValue(url, 0) ?? "";
+}
+
+/** The expression an arrow/function initializer returns (block and paren aware). */
+function returnedExpression(fn: Node | undefined): Node | undefined {
+  if (fn === undefined || (!Node.isArrowFunction(fn) && !Node.isFunctionExpression(fn))) {
+    return undefined;
+  }
+  const body = fn.getBody();
+  const expression = Node.isBlock(body)
+    ? body.getStatements().find(Node.isReturnStatement)?.getExpression()
+    : body;
+  let unwrapped = expression;
+  while (unwrapped !== undefined && Node.isParenthesizedExpression(unwrapped)) {
+    unwrapped = unwrapped.getExpression();
+  }
+  return unwrapped;
+}
+
+function joinBaseUrl(base: string, endpoint: string): string {
+  if (base === "") return endpoint;
+  return `${base.replace(/\/+$/, "")}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 }
 
 const CLASS_COMPONENT_BASE = /(React\.)?(Pure)?Component/;
