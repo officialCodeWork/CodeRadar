@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6F — Field hardening, feedback round 1 (runs before 6.1–6.5)
-- **Next step:** 6F.3 instance→definition resolution hardening
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.2
+- **Next step:** 6F.4 RTK Query extractor
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.3
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -405,7 +405,7 @@ checks): relative two-hop barrel rename (InvoicesPage's Grid), covered-by throug
 wrapper — so 6F.6 must find the actual field-breaking coverage variant and extend the fixture.
 eval 280 pass / 0 fail / 9 xfail / 0 unexpected-pass, gate OK, all metrics 1.000.
 
-### [ ] 6F.3 Instance→definition resolution hardening
+### [x] 6F.3 Instance→definition resolution hardening
 **Failure modes:** A5, C1, F2, D4
 **Build:** the field run linked only 563/1,982 instances (28%) — barrel resolution passes unit
 tests but real chains break it. Extend import resolution: tsconfig `paths` aliases, multi-hop
@@ -415,6 +415,19 @@ re-export chains, `export * from`, default-export renames, and
 **Accept:** field-patterns fixture instance→definition resolution ≥ 95%; `blastRadius` on a
 shared component returns its true dependents (field regression: was 0); render graph connects
 route roots to leaf instances; enable the 6F.2 checks.
+**Done:** two scanner changes. (1) `scanReact` now honors the scanned app's own
+`tsconfig.json` (passed as `tsConfigFilePath`, file discovery still ours) so `baseUrl`/`paths`
+make alias imports resolvable — `@ui` → two-hop rename barrel → definition now links, where
+before the usage produced no instance node at all. (2) New `lazyDefinition` resolution in
+`materializeInstances`: a tag naming a module-scope
+`const X = Loadable(lazy(() => import("./Page")))` (or bare `React.lazy`) unwraps to the
+dynamic import and resolves the target module's default export — exercised by a new
+`PreviewPane` fixture component whose variable name differs from the definition, so only the
+unwrap can link it. Fixture golden: 6F.3 marks removed (DataGrid instances = 2, blast radius
+DataGrid → UsersPage + InvoicesPage), InvoicesPage now has 1 instance (PreviewPane's lazy
+usage). 100% of the fixture's component usages resolve. 2 new parser unit tests (121 total);
+eval 283 pass / 0 fail / 7 xfail (all owned by 6F.4–6F.5) / 0 unexpected-pass, gate OK,
+metrics 1.000.
 
 ### [ ] 6F.4 RTK Query extractor
 **Failure modes:** B2, C5, C6

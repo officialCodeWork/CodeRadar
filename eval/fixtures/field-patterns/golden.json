@@ -1,16 +1,13 @@
 {
   "failureMode": "D2",
-  "note": "Field-pattern regression fixture (6F.2): mirrors the shapes the 2026-07-15 ih-frontend validation run used where every gate scored 1.000 but the field run failed — tsconfig-path-alias barrel imports (@ui), Loadable(lazy(() => import())) page elements, route arrays composed in a separate file and passed to createBrowserRouter as an identifier, an RTK Query store (createApi/injectEndpoints/builder.query|mutation), and tests that render through a custom providers wrapper. Checks assert TARGET behavior; the ones the current scanner cannot satisfy are marked expectedFail with the step that must enable them (6F.3 aliases, 6F.4 RTK Query, 6F.5 object-config routes). xfail semantics remove stale marks automatically: once a step lands, its checks flip to unexpected-pass and gate until the marks are deleted. Verified working already in this shape: relative multi-hop barrel with rename (InvoicesPage's Grid), and covered-by detection through the custom render wrapper.",
+  "note": "Field-pattern regression fixture (6F.2): mirrors the shapes the 2026-07-15 ih-frontend validation run used where every gate scored 1.000 but the field run failed — tsconfig-path-alias barrel imports (@ui), Loadable(lazy(() => import())) page elements, route arrays composed in a separate file and passed to createBrowserRouter as an identifier, an RTK Query store (createApi/injectEndpoints/builder.query|mutation), and tests that render through a custom providers wrapper. Checks assert TARGET behavior; the ones the current scanner cannot satisfy are marked expectedFail with the step that must enable them (6F.4 RTK Query, 6F.5 object-config routes; the 6F.3 alias/lazy marks were removed when that step landed). xfail semantics remove stale marks automatically: once a step lands, its checks flip to unexpected-pass and gate until the marks are deleted. Verified working already in this shape: relative multi-hop barrel with rename (InvoicesPage's Grid), and covered-by detection through the custom render wrapper.",
   "expect": {
     "components": [
       { "name": "HomePage", "instances": 0 },
       { "name": "UsersPage", "instances": 0 },
-      { "name": "InvoicesPage", "instances": 0 },
-      {
-        "name": "DataGrid",
-        "instances": 2,
-        "expectedFail": "enabled by 6F.3 — the @ui tsconfig-path alias import leaves UsersPage's <Grid/> unresolved (no instance node at all today)"
-      },
+      { "name": "InvoicesPage", "instances": 1 },
+      { "name": "PreviewPane", "instances": 0 },
+      { "name": "DataGrid", "instances": 2 },
       { "name": "StatusBadge", "instances": 1 }
     ],
     "queries": [
@@ -71,12 +68,7 @@
     "blast": [
       {
         "node": "DataGrid",
-        "expect": [{ "node": "UsersPage" }],
-        "expectedFail": "enabled by 6F.3 — the shared-component blast radius misses UsersPage while its Grid instance is unresolved (field regression: 0 dependents)"
-      },
-      {
-        "node": "DataGrid",
-        "expect": [{ "node": "InvoicesPage" }]
+        "expect": [{ "node": "UsersPage" }, { "node": "InvoicesPage" }]
       }
     ],
     "coverage": [
