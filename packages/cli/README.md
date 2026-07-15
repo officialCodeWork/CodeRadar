@@ -30,7 +30,18 @@ ui-lineage impact /api/users -g app.graph.json   # blast radius: everything that
 ui-lineage resolve "cart total is wrong"         # classify a ticket, then match it to components
 ui-lineage bundle "cart total is wrong" -b 4000  # a budgeted context bundle (JSON) for an agent
 ui-lineage correct BillingCard "amount owed"     # record a correction for next time
+ui-lineage visualize -g app.graph.json -o app.galaxy.html  # interactive HTML graph explorer
 ```
+
+`visualize` renders the whole graph as a single self-contained HTML file — the graph
+JSON plus all CSS/JS inlined, zero network dependencies — that opens in any browser
+(`open app.galaxy.html`, no server needed). Nodes are laid out as a canvas
+force-directed "galaxy", color-coded by kind (component, instance, hook, data-source,
+state, event, route, external, test); components are the stars, their data/state/events
+cluster around them, routes act as gravitational centers. Toggle node and edge kinds,
+search a node and fly to it, click a node for its details plus a highlighted
+neighborhood (a visual blast radius), drag to pin, scroll to zoom, and pause the
+physics. Built to stay responsive at real-codebase scale (thousands of nodes).
 
 `impact <node>` takes a component name, an API endpoint, a state name, or a route
 path, and lists every node that depends on it (reverse traversal), each indented by

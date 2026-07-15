@@ -43,6 +43,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
@@ -60,6 +61,7 @@
     "@coderadar/vision": "workspace:*",
     "@types/node": "^22.20.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
   }
 }
