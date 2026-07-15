@@ -313,6 +313,44 @@ export function runChecks(
     }
   }
 
+  for (const spec of golden.expect.coverage ?? []) {
+    const owner = graph.nodes.find((n) => n.kind === "component" && n.name === spec.component);
+    const testFiles =
+      owner === undefined
+        ? []
+        : graph.edges
+            .filter((e) => e.kind === "covered-by" && e.from === owner.id)
+            .map((e) => graph.nodes.find((n) => n.id === e.to)?.loc.file)
+            .filter((f): f is string => f !== undefined);
+    if (spec.untested === true) {
+      finalize(
+        "coverage",
+        `coverage:${spec.component}!covered`,
+        owner !== undefined && testFiles.length === 0,
+        spec.expectedFail,
+        owner === undefined
+          ? "component not found"
+          : testFiles.length > 0
+            ? `expected untested, but covered by [${testFiles.join(", ")}]`
+            : undefined,
+      );
+    }
+    for (const want of spec.tests ?? []) {
+      const found = testFiles.some((f) => f.includes(want));
+      finalize(
+        "coverage",
+        `coverage:${spec.component}<=${want}`,
+        owner !== undefined && found,
+        spec.expectedFail,
+        owner === undefined
+          ? "component not found"
+          : found
+            ? undefined
+            : `no test file matching "${want}" covers ${spec.component} (have [${testFiles.join(", ")}])`,
+      );
+    }
+  }
+
   for (const query of golden.expect.queries ?? []) {
     const id = `query:${query.terms.join("+") || JSON.stringify(query.structure)}`;
     const result = matchComponents(graph, {

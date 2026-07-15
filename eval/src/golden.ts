@@ -104,6 +104,16 @@ export interface GoldenCondition {
   expectedFail?: string;
 }
 
+/** A test-coverage assertion (step 5.4, failure mode F3): covered-by edges. */
+export interface GoldenCoverage {
+  component: string;
+  /** Test-file path substrings that must cover this component (via covered-by edges). */
+  tests?: string[];
+  /** When true, the component must carry NO covered-by edge. */
+  untested?: boolean;
+  expectedFail?: string;
+}
+
 /** A blast-radius assertion (step 5.3, failure mode F2): reverse-dependency reach. */
 export interface GoldenBlast {
   /** Node to compute the blast radius from: component name, API endpoint, state name, or route path. */
@@ -164,6 +174,8 @@ export interface Golden {
     externals?: GoldenExternal[];
     /** Blast-radius reverse-dependency reach (step 5.3, F2). */
     blast?: GoldenBlast[];
+    /** Test coverage via covered-by edges (step 5.4, F3). */
+    coverage?: GoldenCoverage[];
   };
 }
 
@@ -182,7 +194,8 @@ export interface CheckResult {
     | "journeys"
     | "conditions"
     | "externals"
-    | "blast";
+    | "blast"
+    | "coverage";
   status: CheckStatus;
   detail?: string;
 }

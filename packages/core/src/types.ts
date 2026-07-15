@@ -29,7 +29,8 @@ export type NodeKind =
   | "state"
   | "event"
   | "route"
-  | "external";
+  | "external"
+  | "test";
 
 export interface BaseNode {
   /** Stable id, unique within a graph. See nodeId()/instanceId(). */
@@ -265,6 +266,18 @@ export interface ExternalNode extends BaseNode {
   host: string;
 }
 
+/**
+ * A test file that exercises one or more components (TRACKER step 5.4, failure
+ * mode F3). Linked to the components it renders by `covered-by` edges, so the
+ * context bundle can name the tests that guard a change — and flag components
+ * that have none.
+ */
+export interface TestNode extends BaseNode {
+  kind: "test";
+  /** Which runner the file appears to use, by its imports/globals. */
+  framework: "vitest" | "jest" | "unknown";
+}
+
 export type LineageNode =
   | ComponentNode
   | InstanceNode
@@ -273,7 +286,8 @@ export type LineageNode =
   | StateNode
   | EventNode
   | RouteNode
-  | ExternalNode;
+  | ExternalNode
+  | TestNode;
 
 export type EdgeKind =
   | "renders" // component|instance -> instance (definition-level until Phase 2.1)
@@ -288,6 +302,7 @@ export type EdgeKind =
   | "navigates-to" // event -> route (handler calls navigate/router.push; Phase 3.2, B3)
   | "exits-app" // event|component -> external (navigate/link to an outside URL; B9)
   | "enters-at" // external -> route (a deep-link / OAuth-callback entry point; B9)
+  | "covered-by" // component -> test (a test file renders/exercises this component; 5.4, F3)
   | "routes-to"; // route -> page component definition (its instances form the page tree)
 
 /** A statically-detected condition guarding an edge (feature flag, role, branch). */
