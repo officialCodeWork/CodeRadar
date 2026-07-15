@@ -1,0 +1,14 @@
+{
+  "failureMode": "A12",
+  "note": "Non-text UI (charts, canvases, icon buttons): nothing to text-match. A text query declines rather than guessing; a structure descriptor returns a candidate at medium confidence — graceful degradation, not a confident wrong answer.",
+  "expect": {
+    "components": [
+      { "name": "MetricsChart", "instances": 0 },
+      { "name": "FilterBar", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["Revenue over time"], "status": "declined" },
+      { "terms": [], "structure": { "buttons": 2 }, "status": "ok", "top": "MetricsChart", "confidence": "medium" }
+    ]
+  }
+}

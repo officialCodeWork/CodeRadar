@@ -1,0 +1,14 @@
+{
+  "failureMode": "F3",
+  "note": "Test-coverage mapping. A co-located UserList.test.tsx renders <UserList/>, so UserList is covered-by that test; Sidebar has no test and must be reported untested. Test files never become component/instance nodes (both components have 0 instances — the test's <UserList/> does not count).",
+  "expect": {
+    "components": [
+      { "name": "UserList", "instances": 0 },
+      { "name": "Sidebar", "instances": 0 }
+    ],
+    "coverage": [
+      { "component": "UserList", "tests": ["UserList.test.tsx"] },
+      { "component": "Sidebar", "untested": true }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "failureMode": "A1",
+  "note": "No static text: a dashboard, form, gallery and list carry zero literals, so text matching finds nothing. Structural signatures (table with N columns, form with M inputs, card/image grid) let a vision-style structure descriptor still rank the right component top-1.",
+  "expect": {
+    "components": [
+      { "name": "StatsDashboard", "instances": 0 },
+      { "name": "LoginForm", "instances": 0 },
+      { "name": "ImageGallery", "instances": 0 },
+      { "name": "SettingsList", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": [], "structure": { "table": true, "columns": 4, "cards": 2 }, "status": "ok", "top": "StatsDashboard", "topK": 3 },
+      { "terms": [], "structure": { "form": true, "inputs": 2, "buttons": 1 }, "status": "ok", "top": "LoginForm", "topK": 3 },
+      { "terms": [], "structure": { "table": true }, "status": "ok", "top": "StatsDashboard" }
+    ]
+  }
+}

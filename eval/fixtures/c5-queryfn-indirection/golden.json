@@ -1,0 +1,35 @@
+{
+  "failureMode": "C5",
+  "note": "react-query queryFn indirection: the hook call site contains no URL — the endpoint lives inside fetchUsers/createUser/fetchTeam declared in api/users.ts. Covers v4/v5 object form (queryFn/mutationFn), v3 positional form, and an inline arrow queryFn.",
+  "expect": {
+    "components": [
+      { "name": "UsersDashboard", "instances": 0 },
+      { "name": "InviteButton", "instances": 0 },
+      { "name": "TeamPanel", "instances": 0 },
+      { "name": "StatsCard", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "UsersDashboard", "endpoints": ["/api/users"] },
+      { "component": "InviteButton", "endpoints": ["/api/users"] },
+      { "component": "TeamPanel", "endpoints": ["/api/team"] },
+      { "component": "StatsCard", "endpoints": ["/api/stats"] }
+    ],
+    "forbidden": [
+      {
+        "component": "UsersDashboard",
+        "endpoint": "<dynamic>",
+        "note": "queryFn reference not followed — endpoint collapsed to dynamic"
+      },
+      {
+        "component": "TeamPanel",
+        "endpoint": "[\"team\"]",
+        "note": "poison: the query KEY reported as if it were the endpoint"
+      }
+    ],
+    "queries": [
+      { "terms": ["Active users"], "status": "ok", "top": "UsersDashboard" },
+      { "terms": ["Invite user"], "status": "ok", "top": "InviteButton" },
+      { "terms": ["Weekly stats"], "status": "ok", "top": "StatsCard" }
+    ]
+  }
+}

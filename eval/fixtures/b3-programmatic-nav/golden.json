@@ -1,0 +1,29 @@
+{
+  "failureMode": "B3",
+  "note": "Action effects: resolved handler bodies mined for effects, each a typed edge from the EventNode. navigate()/router.push → navigates-to a RouteNode (computed target folded to :param form, joined by path shape); fetch in a handler → triggers a data source; dispatch(thunk|action) → writes-state on the slice; setState setter → writes-state on the local slot. A navigate to a path with no declared route is flagged unresolved-nav, never silent.",
+  "expect": {
+    "components": [
+      { "name": "UsersPage", "instances": 0 },
+      { "name": "CartPage", "instances": 0 },
+      { "name": "CheckoutPage", "instances": 0 }
+    ],
+    "routes": [
+      { "path": "/users", "component": "UsersPage" },
+      { "path": "/users/:userId", "component": "UserDetail" },
+      { "path": "/cart", "component": "CartPage" },
+      { "path": "/checkout", "component": "CheckoutPage" }
+    ],
+    "effects": [
+      { "component": "UsersPage", "event": "onClick", "effect": "writes-state", "to": "users" },
+      { "component": "UsersPage", "event": "onClick", "effect": "triggers", "to": "/api/users/export" },
+      { "component": "UsersPage", "event": "onClick", "effect": "navigates-to", "to": "/users/:userId" },
+      { "component": "CartPage", "event": "onClick", "effect": "writes-state", "to": "cart" },
+      { "component": "CartPage", "event": "onClick", "effect": "writes-state", "to": "open" },
+      { "component": "CheckoutPage", "event": "onClick", "effect": "navigates-to", "to": "/cart" }
+    ],
+    "queries": [
+      { "terms": ["All users"], "status": "ok", "top": "UsersPage" },
+      { "terms": ["Your cart"], "status": "ok", "top": "CartPage" }
+    ]
+  }
+}

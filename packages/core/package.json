@@ -1,7 +1,8 @@
 {
   "name": "@coderadar/core",
-  "version": "0.1.0",
-  "description": "CodeRadar lineage graph schema — the language-agnostic contract every parser emits and every agent consumes.",
+  "version": "0.4.0",
+  "private": true,
+  "description": "CodeRadar lineage graph schema — the language-agnostic contract every parser emits and every agent consumes. Bundled into the published `ui-lineage` package.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -17,9 +18,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "schema": "node scripts/gen-schema.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "@types/node": "^22.20.1",
+    "ts-json-schema-generator": "^2.9.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
   }
 }

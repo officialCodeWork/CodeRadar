@@ -1,0 +1,15 @@
+{
+  "failureMode": "E2",
+  "note": "Business vocabulary: users say 'invoice widget' but the component is BillingSummaryCard and that phrase appears nowhere in its text. Without the glossary the query declines; with aliases.yaml loaded it resolves to BillingSummaryCard. Plain-text queries still work.",
+  "expect": {
+    "components": [
+      { "name": "BillingSummaryCard", "instances": 0 },
+      { "name": "InvoiceList", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["invoice widget"], "status": "ok", "top": "BillingSummaryCard" },
+      { "terms": ["Billing summary"], "status": "ok", "top": "BillingSummaryCard" },
+      { "terms": ["Recent invoices"], "status": "ok", "top": "InvoiceList" }
+    ]
+  }
+}

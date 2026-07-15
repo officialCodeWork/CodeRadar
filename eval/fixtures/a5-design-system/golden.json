@@ -1,0 +1,21 @@
+{
+  "failureMode": "A5",
+  "note": "Design-system components: <Button label='Save changes'/> comes from @acme/ui — the definition isn't ours, but the USAGE SITE is what a screenshot match must return. Also exercises barrel re-exports with rename (ProfileCardInner as ProfileCard) and default-export aliasing (default as Avatar).",
+  "scan": {
+    "designSystemPackages": ["@acme/ui"]
+  },
+  "expect": {
+    "components": [
+      { "name": "SettingsPage", "instances": 0 },
+      { "name": "MembersPage", "instances": 0 },
+      { "name": "ProfileCardInner", "instances": 1 },
+      { "name": "AvatarBadge", "instances": 1 }
+    ],
+    "queries": [
+      { "terms": ["Save changes"], "status": "ok", "top": "SettingsPage" },
+      { "terms": ["Team grid"], "status": "ok", "top": "SettingsPage" },
+      { "terms": ["Profile details"], "status": "ok", "top": "ProfileCardInner" },
+      { "terms": ["Members directory"], "status": "ok", "top": "MembersPage" }
+    ]
+  }
+}

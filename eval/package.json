@@ -1,0 +1,22 @@
+{
+  "name": "@coderadar/eval",
+  "version": "0.4.0",
+  "private": true,
+  "description": "CodeRadar eval harness — scans failure-mode fixtures, diffs against golden outputs, emits the scorecard that gates every phase.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@coderadar/agent-sdk": "workspace:*",
+    "@coderadar/core": "workspace:*",
+    "@coderadar/parser-react": "workspace:*",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.7.0"
+  }
+}

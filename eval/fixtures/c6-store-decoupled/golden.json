@@ -1,0 +1,32 @@
+{
+  "failureMode": "C6",
+  "note": "Temporal decoupling via stores: UserDirectory renders useSelector(s => s.users.list) and contains NO fetch — the API was called at login via dispatch(fetchUsers()). Attribution must flow reader → slice → writer thunk → /api/users. Zustand variant: CartWidget reads a store whose own load action fetches /api/cart.",
+  "expect": {
+    "components": [
+      { "name": "LoginPage", "instances": 0 },
+      { "name": "UserDirectory", "instances": 0 },
+      { "name": "CartWidget", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "UserDirectory", "endpoints": ["/api/users"] },
+      { "component": "LoginPage", "endpoints": ["/api/users"] },
+      { "component": "CartWidget", "endpoints": ["/api/cart"] }
+    ],
+    "forbidden": [
+      {
+        "component": "UserDirectory",
+        "endpoint": "/api/cart",
+        "note": "poison: unrelated store's API attributed to the redux reader"
+      },
+      {
+        "component": "CartWidget",
+        "endpoint": "/api/users",
+        "note": "poison: redux slice's API attributed to the zustand reader"
+      }
+    ],
+    "queries": [
+      { "terms": ["User directory"], "status": "ok", "top": "UserDirectory" },
+      { "terms": ["Welcome back"], "status": "ok", "top": "LoginPage" }
+    ]
+  }
+}

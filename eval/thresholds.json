@@ -1,0 +1,12 @@
+{
+  "maxFail": 0,
+  "maxUnexpectedPass": 0,
+  "minMatchAccuracy": 1,
+  "minLineagePrecision": 0.95,
+  "minLineageRecall": 0.95,
+  "minHighConfidenceCorrect": 1,
+  "minAmbiguityHonesty": 0.9,
+  "maxPoisonRate": 0.05,
+  "minEntryPointAccuracy": 0.9,
+  "minOodRejection": 0.95
+}

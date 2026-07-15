@@ -1,0 +1,15 @@
+{
+  "failureMode": "A3",
+  "note": "Text served by API/CMS: components render only {data.*}, so text matching finds nothing (a text query honestly declines). Structural matching still identifies them — but at medium confidence, never high, because shape alone can't be certain.",
+  "expect": {
+    "components": [
+      { "name": "ApiTable", "instances": 0 },
+      { "name": "ApiForm", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": [], "structure": { "table": true, "columns": 3 }, "status": "ok", "top": "ApiTable", "confidence": "medium" },
+      { "terms": [], "structure": { "form": true, "inputs": 2 }, "status": "ok", "top": "ApiForm", "confidence": "medium" },
+      { "terms": ["Team members"], "status": "declined" }
+    ]
+  }
+}

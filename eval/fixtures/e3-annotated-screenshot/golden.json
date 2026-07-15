@@ -1,0 +1,10 @@
+{
+  "failureMode": "E3",
+  "note": "Annotation-region weighting is verified in a unit test (packages/parser-react/src/vision.test.ts) against the checked-in extraction.json — the user circled 'Revenue breakdown', and the 3x boost resolves an otherwise-ambiguous match to RevenuePanel. This golden just asserts the two panels parse.",
+  "expect": {
+    "components": [
+      { "name": "RevenuePanel", "instances": 0 },
+      { "name": "CostPanel", "instances": 0 }
+    ]
+  }
+}

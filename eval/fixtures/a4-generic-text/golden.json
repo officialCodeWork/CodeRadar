@@ -1,0 +1,18 @@
+{
+  "failureMode": "A4",
+  "note": "Generic text collisions: 'Save' appears in three components. A lone generic term must yield an honest ambiguous (with a disambiguation question), never a coin-flip ok. Adding one distinctive term must resolve it.",
+  "expect": {
+    "components": [
+      { "name": "SettingsForm", "instances": 0 },
+      { "name": "ProfileForm", "instances": 0 },
+      { "name": "BillingForm", "instances": 0 }
+    ],
+    "queries": [
+      { "terms": ["Save"], "status": "ambiguous" },
+      { "terms": ["Save", "Card number"], "status": "ok", "top": "BillingForm" },
+      { "terms": ["Save", "Notification preferences"], "status": "ok", "top": "SettingsForm" },
+      { "terms": ["Save", "Display name"], "status": "ok", "top": "ProfileForm" },
+      { "terms": ["Purchase history"], "status": "declined" }
+    ]
+  }
+}

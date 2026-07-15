@@ -1,0 +1,858 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/LineageGraph",
+  "definitions": {
+    "LineageGraph": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 2,
+          "description": "Schema version for forward compatibility."
+        },
+        "root": {
+          "type": "string",
+          "description": "Absolute path of the scanned root at generation time."
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "meta": {
+          "$ref": "#/definitions/GraphMeta"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LineageNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LineageEdge"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "root",
+        "generatedAt",
+        "generator",
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false
+    },
+    "GraphMeta": {
+      "type": "object",
+      "properties": {
+        "commitSha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Commit SHA of the scanned tree; null when not a git repo."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the working tree had uncommitted changes at scan time."
+        }
+      },
+      "required": [
+        "commitSha",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "Scan provenance — which code this graph describes."
+    },
+    "LineageNode": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ComponentNode"
+        },
+        {
+          "$ref": "#/definitions/InstanceNode"
+        },
+        {
+          "$ref": "#/definitions/HookNode"
+        },
+        {
+          "$ref": "#/definitions/DataSourceNode"
+        },
+        {
+          "$ref": "#/definitions/StateNode"
+        },
+        {
+          "$ref": "#/definitions/EventNode"
+        },
+        {
+          "$ref": "#/definitions/RouteNode"
+        },
+        {
+          "$ref": "#/definitions/ExternalNode"
+        },
+        {
+          "$ref": "#/definitions/TestNode"
+        }
+      ]
+    },
+    "ComponentNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "component"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "exportName": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Named or default export, if exported."
+        },
+        "props": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Prop names destructured or accessed from the props object."
+        },
+        "renderedText": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RenderedText"
+          },
+          "description": "Static text visible in the rendered output — the primary signal for matching a screenshot to a component. i18n keys are expanded to one entry per locale, so a French screenshot matches the same component."
+        },
+        "rendersComponents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of components this component renders in its JSX (deduplicated)."
+        },
+        "structure": {
+          "$ref": "#/definitions/StructuralSignature",
+          "description": "Structural fingerprint of the rendered subtree (Phase 4.2)."
+        }
+      },
+      "required": [
+        "exportName",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "props",
+        "renderedText",
+        "rendersComponents",
+        "structure"
+      ],
+      "additionalProperties": false,
+      "description": "A React component definition — the code, not a usage."
+    },
+    "SourceLocation": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path relative to the scan root, POSIX separators."
+        },
+        "line": {
+          "type": "number",
+          "description": "1-based line of the declaration."
+        },
+        "endLine": {
+          "type": "number",
+          "description": "1-based end line of the declaration."
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "endLine"
+      ],
+      "additionalProperties": false,
+      "description": "Where a node lives in the codebase."
+    },
+    "RenderedText": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "jsx",
+            "attribute",
+            "i18n",
+            "portal"
+          ],
+          "description": "Where the text comes from: JSX children, a string attribute (placeholder/label/title/alt/aria-label), an i18n key resolved against locale files, or portal-rendered content (toast(\"Order deleted\") — the text appears far from the caller in the DOM, but the CALLER is the component a screenshot of it should match)."
+        },
+        "key": {
+          "type": "string",
+          "description": "i18n entries only: the translation key, e.g. \"team.title\"."
+        },
+        "locale": {
+          "type": "string",
+          "description": "i18n entries only: which locale this text belongs to."
+        },
+        "branch": {
+          "type": "string",
+          "description": "Condition source text when the text renders only in a branch."
+        },
+        "template": {
+          "type": "boolean",
+          "description": "True when the text came from a template literal with runtime parts — unknown segments appear as `*` (\"* items in cart\") and match as wildcards."
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "One piece of text a component can render, with its provenance."
+    },
+    "StructuralSignature": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "number"
+        },
+        "columns": {
+          "type": "number",
+          "description": "Column headers — the max `<th>` (or design-system column) count in a table."
+        },
+        "form": {
+          "type": "number"
+        },
+        "input": {
+          "type": "number"
+        },
+        "button": {
+          "type": "number"
+        },
+        "link": {
+          "type": "number"
+        },
+        "image": {
+          "type": "number"
+        },
+        "heading": {
+          "type": "number"
+        },
+        "list": {
+          "type": "number",
+          "description": "`<ul>`/`<ol>`/`<li>` groupings."
+        },
+        "repeated": {
+          "type": "number",
+          "description": "`.map(...)` JSX renders — repeated cards/rows/grid items."
+        }
+      },
+      "required": [
+        "table",
+        "columns",
+        "form",
+        "input",
+        "button",
+        "link",
+        "image",
+        "heading",
+        "list",
+        "repeated"
+      ],
+      "additionalProperties": false,
+      "description": "Counts of the structural elements a component renders — the signal for matching a screenshot with little or no static text (TRACKER step 4.2, failure modes A1/A3/A12). Raw DOM tags plus common design-system aliases (`<Table>`, `<TextField>`, …) are folded into these buckets."
+    },
+    "InstanceNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "instance"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "definitionId": {
+          "type": "string",
+          "description": "Id of the ComponentNode this instantiates."
+        },
+        "parentInstanceId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Enclosing instance in the render tree. Null until the cross-file instance tree is built (Phase 2.1); the enclosing *definition* is available via the incoming `renders` edge meanwhile."
+        },
+        "staticProps": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Props with statically-known string values at this call site."
+        }
+      },
+      "required": [
+        "definitionId",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "parentInstanceId",
+        "staticProps"
+      ],
+      "additionalProperties": false,
+      "description": "A component as rendered at one specific call site.\n\nThe same <DataTable> definition rendered on the Users page and the Invoices page yields two instances — and per-instance data attribution (Phase 2.2) is what lets each report a different API."
+    },
+    "HookNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "hook"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "exportName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "exportName",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A custom hook — often the bridge between a component and its data."
+    },
+    "DataSourceNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "data-source"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "sourceKind": {
+          "$ref": "#/definitions/DataSourceKind"
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "HTTP method when statically determinable."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Canonical endpoint pattern: constants folded, template placeholders normalized to :param form — e.g. \"/api/users/:id\". This is the value attribution and cross-graph joins match on."
+        },
+        "raw": {
+          "type": "string",
+          "description": "The endpoint expression exactly as written in source."
+        },
+        "resolved": {
+          "$ref": "#/definitions/EndpointResolution"
+        },
+        "queryKey": {
+          "type": "string",
+          "description": "react-query/SWR cache key as written in source (e.g. `[\"users\"]`) — the identity used for cache-sharing analysis (C7) alongside the endpoint."
+        },
+        "responseType": {
+          "$ref": "#/definitions/ResponseType",
+          "description": "The response shape this source returns, when recoverable (5.5, F4)."
+        }
+      },
+      "required": [
+        "endpoint",
+        "id",
+        "kind",
+        "loc",
+        "method",
+        "name",
+        "raw",
+        "resolved",
+        "sourceKind"
+      ],
+      "additionalProperties": false,
+      "description": "An external data origin: an HTTP endpoint, GraphQL operation, or socket."
+    },
+    "DataSourceKind": {
+      "type": "string",
+      "enum": [
+        "fetch",
+        "axios",
+        "react-query",
+        "rtk-query",
+        "swr",
+        "graphql",
+        "websocket",
+        "unknown"
+      ]
+    },
+    "EndpointResolution": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "description": "How much of an endpoint was statically resolvable."
+    },
+    "ResponseType": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Named type when resolvable (\"User\", \"User[]\"); otherwise the type text."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResponseField"
+          }
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "generic",
+            "annotation",
+            "openapi"
+          ],
+          "description": "Where the type was recovered from."
+        }
+      },
+      "required": [
+        "name",
+        "fields",
+        "source"
+      ],
+      "additionalProperties": false,
+      "description": "The shape a data source returns (TRACKER step 5.4→5.5, failure mode F4). Resolved from a call's generic argument (`useQuery<User[]>`), a type annotation on the variable the result lands in, or an OpenAPI spec matched by endpoint. One level deep only — fields, not their nested shapes."
+    },
+    "ResponseField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "Field type text, e.g. \"string\", \"number | null\", \"Address\"."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "One field of a response type — a name and its type as written."
+    },
+    "StateNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "state"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "stateKind": {
+          "$ref": "#/definitions/StateKind"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "stateKind"
+      ],
+      "additionalProperties": false,
+      "description": "Local or global state a component reads."
+    },
+    "StateKind": {
+      "type": "string",
+      "enum": [
+        "useState",
+        "useReducer",
+        "context",
+        "redux",
+        "zustand",
+        "class-state",
+        "unknown"
+      ]
+    },
+    "EventNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "event"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "event": {
+          "type": "string",
+          "description": "e.g. \"onClick\", \"onSubmit\", \"onChange\", or a DOM/hotkey key (\"keydown\", \"ctrl+s\")."
+        },
+        "handler": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the handler function, if resolvable."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "jsx",
+            "form",
+            "effect",
+            "hotkey"
+          ],
+          "description": "Where the binding comes from (TRACKER step 3.4): a JSX on* prop (the default when absent), a form-library submit handler (react-hook-form's `handleSubmit`, Formik), an `addEventListener` inside an effect, or a hotkey-library registration (`useHotkeys`)."
+        }
+      },
+      "required": [
+        "event",
+        "handler",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A user or system event a component responds to."
+    },
+    "RouteNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "route"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "path": {
+          "type": "string",
+          "description": "Route pattern with dynamic segments in :param form — \"/users/:id\", catch-alls as \":param*\". Matches the endpoint-pattern convention so navigate(\"/users/\" + id) effects (step 3.2) join on the same shape."
+        },
+        "router": {
+          "$ref": "#/definitions/RouterKind"
+        },
+        "layout": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of the layout component wrapping this route's page (a pathless layout route in React Router; the nearest layout.tsx in Next.js app router). Null when the page renders bare."
+        },
+        "guards": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Guard components between the route and its page — auth/role wrappers like <RequireAuth> around the element or as pathless ancestor routes."
+        }
+      },
+      "required": [
+        "guards",
+        "id",
+        "kind",
+        "layout",
+        "loc",
+        "name",
+        "path",
+        "router"
+      ],
+      "additionalProperties": false,
+      "description": "A URL route and the page component it renders (TRACKER step 3.1, failure mode B4). Routes are journey-graph entry points: a journey step like \"navigate to /users/:id\" resolves through the route to the page component's instance tree."
+    },
+    "RouterKind": {
+      "type": "string",
+      "enum": [
+        "react-router",
+        "nextjs-app",
+        "nextjs-pages"
+      ],
+      "description": "Which routing system declared a route."
+    },
+    "ExternalNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "external"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "url": {
+          "type": "string",
+          "description": "Destination as written — a URL, a `mailto:`/`tel:` scheme, or \"inbound\"."
+        },
+        "host": {
+          "type": "string",
+          "description": "Host or scheme used to group destinations (accounts.google.com, mailto)."
+        }
+      },
+      "required": [
+        "host",
+        "id",
+        "kind",
+        "loc",
+        "name",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A destination outside this codebase (TRACKER failure mode B9): an OAuth provider, a payment gateway, a `mailto:`/`tel:` link, or the inbound side of a deep-link/OAuth-callback route. Journeys that reach one leave the app."
+    },
+    "TestNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable id, unique within a graph. See nodeId()/instanceId()."
+        },
+        "kind": {
+          "type": "string",
+          "const": "test"
+        },
+        "name": {
+          "type": "string"
+        },
+        "loc": {
+          "$ref": "#/definitions/SourceLocation"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Degradation markers, e.g. \"incomplete\", \"depth-limited\", \"unresolved-prop-handler\", \"external-definition\". Absent when clean."
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "vitest",
+            "jest",
+            "unknown"
+          ],
+          "description": "Which runner the file appears to use, by its imports/globals."
+        }
+      },
+      "required": [
+        "framework",
+        "id",
+        "kind",
+        "loc",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "A test file that exercises one or more components (TRACKER step 5.4, failure mode F3). Linked to the components it renders by `covered-by` edges, so the context bundle can name the tests that guard a change — and flag components that have none."
+    },
+    "LineageEdge": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/EdgeKind"
+        },
+        "via": {
+          "type": "string",
+          "description": "Prop name for provides-data edges; handler name for triggers."
+        },
+        "condition": {
+          "$ref": "#/definitions/EdgeCondition"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "EdgeKind": {
+      "type": "string",
+      "enum": [
+        "renders",
+        "instance-of",
+        "uses-hook",
+        "fetches-from",
+        "provides-data",
+        "reads-state",
+        "writes-state",
+        "handles",
+        "triggers",
+        "navigates-to",
+        "exits-app",
+        "enters-at",
+        "covered-by",
+        "routes-to"
+      ]
+    },
+    "EdgeCondition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "flag",
+            "role",
+            "branch",
+            "response"
+          ]
+        },
+        "expression": {
+          "type": "string",
+          "description": "Source text of the condition, e.g. `isEnabled(\"new-billing\")`."
+        }
+      },
+      "required": [
+        "kind",
+        "expression"
+      ],
+      "additionalProperties": false,
+      "description": "A statically-detected condition guarding an edge (feature flag, role, branch)."
+    }
+  }
+}

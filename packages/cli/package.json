@@ -1,26 +1,67 @@
 {
-  "name": "@coderadar/cli",
-  "version": "0.1.0",
-  "description": "CodeRadar CLI — scan a React codebase into a lineage graph and query it.",
+  "name": "ui-lineage",
+  "version": "0.4.0",
+  "description": "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it. Deterministic static analysis for React/TSX.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "coderadar": "dist/index.js"
+    "ui-lineage": "dist/index.js",
+    "ui-lineage-mcp": "dist/mcp.js"
+  },
+  "main": "dist/lib.js",
+  "module": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/lib.d.ts",
+      "default": "./dist/lib.js"
+    },
+    "./vision": {
+      "types": "./dist/vision.d.ts",
+      "default": "./dist/vision.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
+  "keywords": [
+    "react",
+    "static-analysis",
+    "data-lineage",
+    "data-flow",
+    "ast",
+    "ts-morph",
+    "user-journeys",
+    "component-graph",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@coderadar/core": "workspace:*",
-    "@coderadar/parser-react": "workspace:*",
-    "commander": "^13.0.0"
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "commander": "^13.0.0",
+    "ts-morph": "^24.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@coderadar/agent-sdk": "workspace:*",
+    "@coderadar/core": "workspace:*",
+    "@coderadar/mcp": "workspace:*",
+    "@coderadar/parser-react": "workspace:*",
+    "@coderadar/vision": "workspace:*",
     "@types/node": "^22.20.1",
-    "typescript": "^5.7.0"
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
   }
 }

@@ -1,0 +1,32 @@
+{
+  "failureMode": "D4",
+  "note": "Legacy patterns: class components (React.Component and bare Component), lifecycle fetches, this.state, HOC-wrapped components (connect(map)(Inner)), and a class with no render() that must degrade to an incomplete-flagged node instead of vanishing.",
+  "expect": {
+    "components": [
+      { "name": "OrdersBoard", "instances": 0 },
+      { "name": "UserBadge", "instances": 0 },
+      { "name": "PanelInner", "instances": 1 },
+      { "name": "Dashboard", "instances": 0 },
+      { "name": "BrokenPanel", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "OrdersBoard", "endpoints": ["/api/orders"] },
+      { "component": "UserBadge", "endpoints": [] },
+      { "component": "Dashboard", "endpoints": [] }
+    ],
+    "forbidden": [
+      {
+        "component": "OrdersBoard",
+        "endpoint": "<dynamic>",
+        "note": "lifecycle fetch collapsed to dynamic means class scanning regressed"
+      }
+    ],
+    "queries": [
+      { "terms": ["Orders board"], "status": "ok", "top": "OrdersBoard" },
+      { "terms": ["Orders unavailable"], "status": "ok", "top": "OrdersBoard" },
+      { "terms": ["Signed in as"], "status": "ok", "top": "UserBadge" },
+      { "terms": ["Connected panel body"], "status": "ok", "top": "PanelInner" },
+      { "terms": ["Legacy dashboard"], "status": "ok", "top": "Dashboard" }
+    ]
+  }
+}

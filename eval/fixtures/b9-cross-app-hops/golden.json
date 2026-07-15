@@ -1,0 +1,22 @@
+{
+  "failureMode": "B9",
+  "note": "Cross-app hops: an OAuth redirect (window.location.assign), a payment gateway (window.open), and a mailto link all leave the app → exits-app edges to external destinations; an /auth/callback route is an inbound entry point → an enters-at edge. Journeys that reach an external end with an 'exit' step.",
+  "expect": {
+    "components": [
+      { "name": "LoginPage", "instances": 0 },
+      { "name": "CheckoutPage", "instances": 0 },
+      { "name": "CallbackPage", "instances": 0 }
+    ],
+    "routes": [
+      { "path": "/login", "component": "LoginPage" },
+      { "path": "/checkout", "component": "CheckoutPage" },
+      { "path": "/auth/callback", "component": "CallbackPage" }
+    ],
+    "externals": [
+      { "kind": "exits", "component": "LoginPage", "host": "accounts.google.com" },
+      { "kind": "exits", "component": "LoginPage", "host": "mailto" },
+      { "kind": "exits", "component": "CheckoutPage", "host": "checkout.stripe.com" },
+      { "kind": "enters", "route": "/auth/callback", "host": "inbound" }
+    ]
+  }
+}
