@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 5 — Context bundle & agent interface
-- **Next step:** 5.3 — Blast radius (reverse traversal)
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.2
+- **Next step:** 5.4 — Test coverage mapping
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.3
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000)
 
 ## What CodeRadar is
@@ -279,10 +279,11 @@ The heart of the project. C1 and B1 live here.
 **Build:** `ContextBundle` type + JSON Schema (committed, drift-gated): sections `match` (instances + evidence), `lineage` (per-instance sources with patterns/methods), `journeys` (slice around the match, depth 2 default), `blastRadius`, `tests`, `history`, `warnings` (staleness, incomplete flags). Budgeter: `budgetTokens` param; sections trimmed in fixed priority order (match > lineage > blastRadius > journeys > tests > history), each trim recorded in `warnings`.
 **Accept:** golden bundles for 5 ticket evals; every bundle ≤ budget under a tokenizer test at budgets 2k/4k/8k; trim order unit-tested.
 
-### [ ] 5.3 Blast radius — reverse traversal
+### [x] 5.3 Blast radius — reverse traversal
 **Failure modes:** F2
 **Build:** reverse adjacency in core: `blastRadius(nodeId)` → all instances rendering this definition, all consumers of this data source/endpoint, all readers of this state slice, journeys passing through — each with distance. CLI `coderadar impact <node>`.
 **Accept:** fixture golden: changing the c1 DataTable definition lists both page instances; changing `/api/users` lists every consumer across fixtures.
+**Done:** `blastRadius(graph, target)` in core — a dependency-direction-aware reverse BFS (`dependencyOf` maps each edge kind to resource↔dependent, so a change propagates the right way regardless of edge direction; journey edges don't propagate impact). Resolves a target by node id, component name, endpoint, state name, or route path; returns `ImpactNode[]` (node, relation, distance) nearest-first, always high-confidence. Wired into the context bundle's `blastRadius` section (compact `Name@file:line` labels) and a CLI `impact <node>` command (`-d` depth cap). c1 golden `blast` block asserts both instances (d1) + both pages (d2) for the shared DataTable, and every `/api/users` consumer with an over-reach guard forbidding the invoices side. New `GoldenBlast` type + `blast` check kind in the eval harness. 5 core unit tests; eval 258/0/0, gate OK.
 
 ### [ ] 5.4 Test coverage mapping
 **Failure modes:** F3

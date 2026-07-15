@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchComponentsByText, traceLineage } from "./query.js";
+import { blastRadius, matchComponentsByText, traceLineage } from "./query.js";
 import { confidenceFromScore } from "./result.js";
 import {
   type ComponentNode,
@@ -173,5 +173,66 @@ describe("traceLineage", () => {
     );
     const result = traceLineage(cyclic, parent.id);
     expect(result.status).toBe("ok");
+  });
+});
+
+describe("blastRadius", () => {
+  // The c1 shape: one shared DataTable, two pages, two APIs (mirrors the fixture).
+  const table = component("DataTable.tsx", "DataTable", ["No records found"]);
+  const usersPage = component("UsersPage.tsx", "UsersPage", ["All Users"]);
+  const invoicesPage = component("InvoicesPage.tsx", "InvoicesPage", ["All Invoices"]);
+  const usersTable = instance("UsersPage.tsx", 17, table);
+  const invoicesTable = instance("InvoicesPage.tsx", 17, table);
+  const usersApi = dataSource("UsersPage.tsx", "/api/users");
+  const invoicesApi = dataSource("InvoicesPage.tsx", "/api/invoices");
+
+  const g = graph(
+    [table, usersPage, invoicesPage, usersTable, invoicesTable, usersApi, invoicesApi],
+    [
+      { from: usersPage.id, to: usersTable.id, kind: "renders" },
+      { from: usersTable.id, to: table.id, kind: "instance-of" },
+      { from: invoicesPage.id, to: invoicesTable.id, kind: "renders" },
+      { from: invoicesTable.id, to: table.id, kind: "instance-of" },
+      { from: usersPage.id, to: usersApi.id, kind: "fetches-from" },
+      { from: invoicesPage.id, to: invoicesApi.id, kind: "fetches-from" },
+      { from: usersApi.id, to: usersTable.id, kind: "provides-data" },
+      { from: invoicesApi.id, to: invoicesTable.id, kind: "provides-data" },
+    ],
+  );
+
+  it("declines not-found for unknown targets", () => {
+    expect(blastRadius(g, "Nope").declineReason).toBe("not-found");
+  });
+
+  it("finds both instances (d1) and both pages (d2) for a shared definition", () => {
+    const impacts = blastRadius(g, "DataTable").candidates[0]?.value ?? [];
+    const ids = impacts.map((i) => ({ id: i.node.id, distance: i.distance }));
+    expect(ids).toContainEqual({ id: usersTable.id, distance: 1 });
+    expect(ids).toContainEqual({ id: invoicesTable.id, distance: 1 });
+    expect(ids).toContainEqual({ id: usersPage.id, distance: 2 });
+    expect(ids).toContainEqual({ id: invoicesPage.id, distance: 2 });
+  });
+
+  it("resolves a data source by endpoint and lists only its consumers", () => {
+    const impacts = blastRadius(g, "/api/users").candidates[0]?.value ?? [];
+    const ids = impacts.map((i) => i.node.id);
+    expect(ids).toContain(usersPage.id); // fetcher
+    expect(ids).toContain(usersTable.id); // fed instance
+    // Over-reach guard: nothing from the invoices side leaks in.
+    expect(ids).not.toContain(invoicesPage.id);
+    expect(ids).not.toContain(invoicesApi.id);
+    expect(ids).not.toContain(invoicesTable.id);
+  });
+
+  it("honors the depth cap", () => {
+    const shallow = blastRadius(g, "DataTable", { depth: 1 }).candidates[0]?.value ?? [];
+    expect(shallow.every((i) => i.distance <= 1)).toBe(true);
+    expect(shallow.some((i) => i.node.id === usersPage.id)).toBe(false);
+  });
+
+  it("returns a deterministic, high-confidence result", () => {
+    const result = blastRadius(g, "DataTable");
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.confidence.level).toBe("high");
   });
 });

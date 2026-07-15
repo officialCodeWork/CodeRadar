@@ -50,6 +50,27 @@
       { "terms": ["All Users"], "status": "ok", "top": "UsersPage" },
       { "terms": ["All Invoices"], "status": "ok", "top": "InvoicesPage" },
       { "terms": ["No records found"], "status": "ok", "top": "DataTable" }
+    ],
+    "blast": [
+      {
+        "node": "DataTable",
+        "note": "Changing the shared DataTable definition surfaces both page instances (distance 1) and the pages that render them (distance 2).",
+        "expect": [
+          { "node": "DataTable", "kind": "instance", "at": "pages/UsersPage.tsx", "distance": 1 },
+          { "node": "DataTable", "kind": "instance", "at": "pages/InvoicesPage.tsx", "distance": 1 },
+          { "node": "UsersPage", "kind": "component", "distance": 2 },
+          { "node": "InvoicesPage", "kind": "component", "distance": 2 }
+        ]
+      },
+      {
+        "node": "/api/users",
+        "note": "Changing the users API surfaces every consumer — the fetching page and the table instance it feeds — but must NOT reach the invoices page or its API.",
+        "expect": [
+          { "node": "UsersPage", "kind": "component", "distance": 1 },
+          { "node": "DataTable", "kind": "instance", "at": "pages/UsersPage.tsx", "distance": 1 }
+        ],
+        "forbidden": ["InvoicesPage", "/api/invoices"]
+      }
     ]
   }
 }

@@ -25,7 +25,19 @@ ui-lineage find "All invoices" -g app.graph.json # text → component
 ui-lineage find "invoice widget" -a aliases.yaml # resolve business vocabulary
 ui-lineage trace InvoicesPage -g app.graph.json  # component → data/state/events
 ui-lineage journeys /users -g app.graph.json     # user-journey paths from a page
+ui-lineage impact /api/users -g app.graph.json   # blast radius: everything that depends on a node
+ui-lineage resolve "cart total is wrong"         # classify a ticket, then match it to components
+ui-lineage bundle "cart total is wrong" -b 4000  # a budgeted context bundle (JSON) for an agent
 ui-lineage correct BillingCard "amount owed"     # record a correction for next time
+```
+
+`impact <node>` takes a component name, an API endpoint, a state name, or a route
+path, and lists every node that depends on it (reverse traversal), each indented by
+its distance — so a change can be reviewed for what it might break:
+
+```
+  [instance-of] instance DataTable  (pages/UsersPage.tsx:17)
+    [renders] component UsersPage   (pages/UsersPage.tsx:5)
 ```
 
 `journeys` reads left-to-right, with `↩ cycle` where a list ⇄ detail loop closes:

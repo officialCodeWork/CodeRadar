@@ -104,6 +104,25 @@ export interface GoldenCondition {
   expectedFail?: string;
 }
 
+/** A blast-radius assertion (step 5.3, failure mode F2): reverse-dependency reach. */
+export interface GoldenBlast {
+  /** Node to compute the blast radius from: component name, API endpoint, state name, or route path. */
+  node: string;
+  /** Impacted nodes that must appear. */
+  expect: Array<{
+    /** Component/definition name, endpoint, state name, or route path of the impacted node. */
+    node: string;
+    kind?: "component" | "instance" | "data-source" | "state" | "route" | "hook" | "event";
+    /** Substring the impacted node's file path must contain (disambiguates instances). */
+    at?: string;
+    /** Exact reverse-dependency distance, when asserted (1 = direct dependent). */
+    distance?: number;
+  }>;
+  /** Definition/endpoint names that must NOT appear in the blast radius (over-reach guard). */
+  forbidden?: string[];
+  expectedFail?: string;
+}
+
 /** A cross-app hop (step B9): an exits-app or enters-at edge. */
 export interface GoldenExternal {
   kind: "exits" | "enters";
@@ -143,6 +162,8 @@ export interface Golden {
     conditions?: GoldenCondition[];
     /** Cross-app hops (B9): exits-app / enters-at edges. */
     externals?: GoldenExternal[];
+    /** Blast-radius reverse-dependency reach (step 5.3, F2). */
+    blast?: GoldenBlast[];
   };
 }
 
@@ -160,7 +181,8 @@ export interface CheckResult {
     | "effects"
     | "journeys"
     | "conditions"
-    | "externals";
+    | "externals"
+    | "blast";
   status: CheckStatus;
   detail?: string;
 }
