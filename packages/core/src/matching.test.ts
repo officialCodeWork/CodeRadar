@@ -169,3 +169,36 @@ describe("alias glossary & corrections (TRACKER 4.6, E2/G4)", () => {
     expect(result.candidates[0]?.value.component.name).toBe("BillingSummaryCard");
   });
 });
+
+describe("empty-normalizing rendered text is never a wildcard (TRACKER 6F.1, A14)", () => {
+  // The field-found v0.3.0 bug: "|" normalizes to "", and an empty target is a
+  // substring of every query — so every call matched the same punctuation
+  // components, ranked only by the query's own character rarity.
+  const g = graph([
+    component("Divider", ["|"]),
+    component("Breadcrumb", ["/", "-"]),
+    component("CalendarPanel", ["Upcoming meetings", "Calendar"]),
+  ]);
+
+  it("gibberish declines no-signal instead of matching punctuation components", () => {
+    const result = matchComponentsByText(g, ["zzqwxnomatch12345"]);
+    expect(result.status).toBe("declined");
+    expect(result.declineReason).toBe("no-signal");
+    expect(result.candidates).toEqual([]);
+  });
+
+  it("a real term ranks the real component without punctuation noise", () => {
+    const result = matchComponentsByText(g, ["Upcoming meetings"]);
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.value.component.name).toBe("CalendarPanel");
+    const names = result.candidates.map((c) => c.value.component.name);
+    expect(names).not.toContain("Divider");
+    expect(names).not.toContain("Breadcrumb");
+  });
+
+  it("mixing gibberish with a real term still resolves to the real component", () => {
+    const result = matchComponentsByText(g, ["zzqwxnomatch12345", "Upcoming meetings"]);
+    expect(result.status).toBe("ok");
+    expect(result.candidates[0]?.value.component.name).toBe("CalendarPanel");
+  });
+});

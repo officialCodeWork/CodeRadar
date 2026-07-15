@@ -30,6 +30,7 @@ every downstream agent. When in doubt, return ranked candidates with evidence, o
 | A11 | **Version drift** — screenshot from prod, graph from today's main | Component renamed/removed since | SHA-tagged graphs; report renames across graph versions | 6 |
 | A12 | **Non-text UI** — charts, icons, canvases | Nothing to text-match | Graceful degradation: structural candidates + explicit low confidence | 4 |
 | A13 | **Third-party embeds** — Intercom, iframes | Content isn't ours | Detect and report "not in this codebase" | 4 |
+| A14 | **Empty-normalizing rendered text** — components rendering bare `\|` / `/` / `-` | Normalization strips punctuation → empty target treated as a substring of every query; matcher becomes a universal wildcard (field-found in v0.3.0) | Discard targets that normalize to empty; minimum alphanumeric token length; `no-signal` decline when only such targets match | 6F |
 
 ## B. User-journey extraction
 
