@@ -10,6 +10,9 @@ importers:
 
   eval:
     dependencies:
+      '@coderadar/agent-sdk':
+        specifier: workspace:*
+        version: link:../packages/agent-sdk
       '@coderadar/core':
         specifier: workspace:*
         version: link:../packages/core
@@ -27,6 +30,22 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/agent-sdk:
+    dependencies:
+      '@coderadar/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.20.1)(yaml@2.9.0)
+
   packages/cli:
     dependencies:
       commander:
@@ -39,6 +58,9 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
     devDependencies:
+      '@coderadar/agent-sdk':
+        specifier: workspace:*
+        version: link:../agent-sdk
       '@coderadar/core':
         specifier: workspace:*
         version: link:../core

@@ -206,6 +206,10 @@ export interface Scorecard {
     ambiguityHonesty: number | null;
     /** Fraction of `ok` answers that are confidently wrong (the poison rate). */
     poisonRate: number | null;
+    /** Ticket entry-point classification accuracy (step 5.1). */
+    entryPointAccuracy: number | null;
+    /** Fraction of out-of-domain tickets correctly declined (step 5.1). */
+    oodRejection: number | null;
   };
 }
 
@@ -219,4 +223,6 @@ export interface Thresholds {
   minHighConfidenceCorrect?: number;
   minAmbiguityHonesty?: number;
   maxPoisonRate?: number;
+  minEntryPointAccuracy?: number;
+  minOodRejection?: number;
 }

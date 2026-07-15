@@ -1,0 +1,23 @@
+[
+  { "id": "v1", "text": "Screenshot of the users table — the columns look wrong.", "screenshots": 1, "expect": "visual" },
+  { "id": "v2", "text": "See attached; this is the invoice detail page after saving.", "screenshots": 1, "expect": "visual" },
+  { "id": "v3", "text": "This dashboard card is misaligned. Grab from prod.", "screenshots": 1, "expect": "visual" },
+  { "id": "v4", "text": "Attached a shot of the settings screen — the toggle is off.", "screenshots": 1, "expect": "visual" },
+  { "id": "v5", "text": "Here is what the checkout page renders for me.", "screenshots": 1, "expect": "visual" },
+
+  { "id": "t1", "text": "The 'All invoices' page shows stale totals after a refund.", "expect": "textual" },
+  { "id": "t2", "text": "Fix the label on the Billing summary card — it says the wrong currency.", "expect": "textual" },
+  { "id": "t3", "text": "The Team Members list is missing the avatar column.", "expect": "textual" },
+  { "id": "t4", "text": "Rename 'Save draft' to 'Save' on the editor toolbar.", "expect": "textual" },
+
+  { "id": "b1", "text": "Clicking the Save button does nothing on the profile page.", "expect": "behavioral" },
+  { "id": "b2", "text": "After I submit the signup form, nothing happens — no error, no redirect.", "expect": "behavioral" },
+  { "id": "b3", "text": "The Refresh button on the users page isn't working.", "expect": "behavioral" },
+
+  { "id": "o1", "text": "The users API endpoint returns 503 under load; investigate the database connection pool.", "expect": "out-of-domain" },
+  { "id": "o2", "text": "Kubernetes deployment is crash-looping after the last migration.", "expect": "out-of-domain" },
+  { "id": "o3", "text": "Redis cache latency spiked and the cron worker queue is backed up.", "expect": "out-of-domain" },
+
+  { "id": "u1", "text": "Screen recording attached showing the whole flow.", "links": ["https://files.example.com/bug-repro.mp4"], "expect": "unsupported" },
+  { "id": "u2", "text": "I made a video of the checkout flow — see the recording.", "expect": "unsupported" }
+]

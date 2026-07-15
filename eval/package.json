@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@coderadar/agent-sdk": "workspace:*",
     "@coderadar/core": "workspace:*",
     "@coderadar/parser-react": "workspace:*",
     "yaml": "^2.9.0"
