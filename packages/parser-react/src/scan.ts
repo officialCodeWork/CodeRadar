@@ -187,9 +187,12 @@ export function scanReact(options: ScanOptions): LineageGraph {
   const stores = detectStores(project, root, nodes, addEdge, baseUrls, wrappers);
   /** Event node id → the handler expressions it wires, mined for effects (3.2). */
   const handlerExprs = new Map<string, Node[]>();
+  /** Files classified machine-generated (6.5, D5) — kept in lineage, excluded from matching. */
+  const generatedFiles = new Set<string>();
 
   for (const sourceFile of sortedSourceFiles(project)) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
+    if (isGeneratedFile(file, sourceFile.getFullText())) generatedFiles.add(file);
     // Test files are swept separately (5.4) — they exercise components, they
     // don't define the app's UI, so they must not produce component/hook nodes.
     if (isTestFile(file)) continue;
@@ -267,6 +270,19 @@ export function scanReact(options: ScanOptions): LineageGraph {
     if (openApi !== null) linkOpenApiResponses(nodes, openApi);
   }
 
+  // Mark nodes defined in machine-generated files (6.5, D5). Done as a post-pass
+  // so it covers function components, class components, and hooks uniformly
+  // regardless of which extractor emitted them. The `generated` flag is what the
+  // matcher reads to keep these out of candidate ranking while leaving their
+  // data-source lineage intact.
+  if (generatedFiles.size > 0) {
+    for (const node of nodes.values()) {
+      if ((node.kind === "component" || node.kind === "hook") && generatedFiles.has(node.loc.file)) {
+        node.flags = [...(node.flags ?? []), "generated"];
+      }
+    }
+  }
+
   return {
     version: 2,
     root,
@@ -309,6 +325,44 @@ function sortedSourceFiles(project: Project): SourceFile[] {
     const pb = b.getFilePath();
     return pa < pb ? -1 : pa > pb ? 1 : 0;
   });
+}
+
+/**
+ * Codegen path shapes (6.5, D5): a `__generated__/` or `generated/` directory
+ * segment, or a `.generated.` / `.gen.` filename infix. Case-insensitive.
+ */
+const GENERATED_PATH = /(^|\/)(__generated__|generated)(\/|$)|\.(generated|gen)\.[jt]sx?$/i;
+
+/**
+ * Banner comments codegen tools emit at the top of a file: the `@generated`
+ * docblock tag, the Go-style "Code generated … DO NOT EDIT" line, or a bare
+ * "DO NOT EDIT" / "AUTO-GENERATED" marker.
+ */
+const GENERATED_BANNER = /@generated\b|DO NOT EDIT|AUTO-?GENERATED/i;
+
+/** A single line this long is a sourcemap-less minified bundle, not authored source. */
+const MINIFIED_LINE = 3000;
+
+/**
+ * True when a file is machine-generated (6.5, D5) — by path shape, a top-of-file
+ * banner, or minification. Generated code is retained in the graph as lineage /
+ * API metadata but excluded from match candidates: it is not authored UI, so a
+ * screenshot or ticket should never resolve to it.
+ */
+function isGeneratedFile(relPath: string, text: string): boolean {
+  if (GENERATED_PATH.test(relPath)) return true;
+  // Banners live in the first lines; only scan the head so a stray "DO NOT EDIT"
+  // deep in a hand-written file doesn't misclassify it.
+  if (GENERATED_BANNER.test(text.slice(0, 2000))) return true;
+  // Minified: any single line past the threshold. Real source wraps long before.
+  let lineStart = 0;
+  for (let i = 0; i <= text.length; i += 1) {
+    if (i === text.length || text.charCodeAt(i) === 10 /* \n */) {
+      if (i - lineStart >= MINIFIED_LINE) return true;
+      lineStart = i + 1;
+    }
+  }
+  return false;
 }
 
 /** Spread helper: emit a `responseType` field only when one was recovered (5.5). */
