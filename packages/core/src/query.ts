@@ -135,7 +135,12 @@ export function matchComponents(
   if (queryTerms.length === 0 && descriptor === undefined) return declined("no-signal");
 
   const instancesByDefinition = groupInstances(graph);
-  const components = graph.nodes.filter((n): n is ComponentNode => n.kind === "component");
+  // Machine-generated components (6.5, D5) are excluded from the candidate pool
+  // — and therefore from the IDF corpus below — so a screenshot or ticket never
+  // resolves to codegen output. Their nodes/edges stay in the graph for tracing.
+  const components = graph.nodes.filter(
+    (n): n is ComponentNode => n.kind === "component" && !(n.flags?.includes("generated") ?? false),
+  );
 
   // Document frequency per token, for rarity (IDF) weighting.
   const documentFrequency = new Map<string, number>();
