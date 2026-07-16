@@ -13,9 +13,11 @@ import {
   type LineageGraph,
   loadCorrections,
   loadGraph as loadGraphFile,
+  loadGraphFromStore,
   matchComponents,
   recordCorrection,
   saveGraph,
+  saveGraphToStore,
   traceLineage,
 } from "@coderadar/core";
 import { buildBundle, resolveContext } from "@coderadar/agent-sdk";
@@ -40,13 +42,21 @@ program
   .argument("<dir>", "directory to scan")
   .option("-o, --out <file>", "output file", "ui-lineage.graph.json")
   .option("--openapi <file>", "OpenAPI 3 JSON spec (relative to <dir>) for response-schema linking")
-  .action((dir: string, opts: { out: string; openapi?: string }) => {
+  .option(
+    "--store",
+    "also save into the SHA-keyed store (.coderadar/graphs/<sha>.json + latest) for version-skew diffs (6.4)",
+  )
+  .action((dir: string, opts: { out: string; openapi?: string; store?: boolean }) => {
     const meta = collectGraphMeta(path.resolve(dir));
     const graph = {
       ...resolveHookEdges(scanReact({ root: dir, ...(opts.openapi ? { openapi: opts.openapi } : {}) })),
       meta,
     };
     saveGraph(graph, opts.out);
+    if (opts.store === true) {
+      const stored = saveGraphToStore(graph, path.resolve(dir));
+      console.log(`  stored: ${stored}`);
+    }
     const counts = new Map<string, number>();
     for (const node of graph.nodes) {
       counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
@@ -224,16 +234,38 @@ program
   .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
   .option("-s, --screenshot", "the ticket has a screenshot attached")
   .option("-b, --budget <n>", "token budget", "4000")
-  .action((text: string, opts: { graph: string; screenshot?: boolean; budget: string }) => {
-    const graph = loadGraph(opts.graph);
-    const budgetTokens = Number.parseInt(opts.budget, 10);
-    const bundle = buildBundle(
-      graph,
-      { text, ...(opts.screenshot ? { screenshots: 1 } : {}) },
-      { budgetTokens: Number.isNaN(budgetTokens) ? 4000 : budgetTokens },
-    );
-    console.log(JSON.stringify(bundle, null, 2));
-  });
+  .option(
+    "--against <version>",
+    "diff the match against a stored graph version (a commit SHA or 'latest') to warn on renamed/moved definitions (6.4)",
+  )
+  .action(
+    (
+      text: string,
+      opts: { graph: string; screenshot?: boolean; budget: string; against?: string },
+    ) => {
+      const graph = loadGraph(opts.graph);
+      const budgetTokens = Number.parseInt(opts.budget, 10);
+      let currentGraph: LineageGraph | undefined;
+      if (opts.against !== undefined) {
+        try {
+          currentGraph = loadGraphFromStore(graph.root, opts.against);
+        } catch (err) {
+          console.error(`--against: ${(err as Error).message}`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      const bundle = buildBundle(
+        graph,
+        { text, ...(opts.screenshot ? { screenshots: 1 } : {}) },
+        {
+          budgetTokens: Number.isNaN(budgetTokens) ? 4000 : budgetTokens,
+          ...(currentGraph !== undefined ? { currentGraph } : {}),
+        },
+      );
+      console.log(JSON.stringify(bundle, null, 2));
+    },
+  );
 
 program
   .command("impact")

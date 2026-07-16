@@ -1,0 +1,10 @@
+{
+  "failureMode": "G3",
+  "app": "./new",
+  "note": "Version skew & rename tracking (6.4): a definition renamed InvoiceCard -> BillingCard and moved InvoiceCard.tsx -> BillingCard.tsx between two graph versions. This fixture's golden validates the post-rename ('current') graph directly — BillingCard exists, traces /api/invoices, and matches its rendered text. The cross-version rename DIFF (old graph + new graph -> 'renamed BillingCard' warning) is a two-graph property, exercised by unit tests in core (diffRenames), parser-react (real scan of ./old and ./new), and agent-sdk (buildBundle currentGraph warning).",
+  "expect": {
+    "components": [{ "name": "BillingCard", "instances": 0 }],
+    "attributions": [{ "component": "BillingCard", "endpoints": ["/api/invoices"] }],
+    "queries": [{ "terms": ["Invoice summary"], "status": "ok", "top": "BillingCard" }]
+  }
+}
