@@ -59,6 +59,13 @@
         "dirty": {
           "type": "boolean",
           "description": "True when the working tree had uncommitted changes at scan time."
+        },
+        "fileHashes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-file content hashes (relative posix path → sha256), enabling an incremental re-scan (6.1) to detect exactly which files changed since this graph was produced. Absent on graphs scanned without `--update`/`--watch`."
         }
       },
       "required": [
