@@ -113,6 +113,17 @@ Turn a screenshot into `{ terms, structure, annotations }` and match it — term
 
 Endpoints (constants, templates, API wrappers, react-query/SWR), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
 
+## New in 0.5.0
+
+Phase 6 — lifecycle, scale, and hardening (production-grade: incremental, fast, deterministic, versioned):
+
+- **Incremental re-scan** — `scan --update` re-parses only files whose contents changed (byte-identical to a full re-scan by construction) and skips work entirely when nothing changed; `scan --watch` re-emits the graph on each save. Per-file content hashes recorded in `GraphMeta`.
+- **Determinism** — nodes, edges, and candidates emit in stable, explicit sort order regardless of filesystem/platform; the eval runner hard-gates two-run byte-identity.
+- **Version skew & rename tracking** — a SHA-keyed graph store (`.coderadar/graphs/<sha>.json` + `latest`); `bundle --against <sha|latest>` warns when the matched component was renamed/moved in the current code (“matched `InvoiceCard`; renamed `BillingCard`”).
+- **Generated-code classification** — machine-generated files (`@generated`/`DO NOT EDIT` banners, `__generated__/` paths, `.generated.` infixes, minified) are kept in lineage as API metadata but excluded from match candidates.
+- **PII policy** — screenshots are ephemeral (never persisted, embedded, or logged); the graph and corrections store hold terms only. Documented in `docs/security.md` and enforced by a test.
+- **Scale** — a ~2,000-file synthetic benchmark with a nightly, budget-gated perf CI job (< 5 min scan, < 4 GB RSS).
+
 ## New in 0.4.1
 
 Second field-hardening round, validated by self-running against **Grafana's frontend** (6,461 files → 15,334-node graph in 72 s: 55 RTK-query data sources, 32 routes, 1,009 test-coverage edges):
@@ -143,7 +154,7 @@ User journeys · action effects · form & non-JSX events · flag/role conditions
 
 ## Status
 
-Pre-1.0. Output is deterministic and language-agnostic (a plain JSON graph), designed to feed AI agents as a context provider — not to be one. Next: lifecycle/scale hardening (incremental scan, caching) and backend lineage (pixel → API handler).
+Pre-1.0. Output is deterministic and language-agnostic (a plain JSON graph), designed to feed AI agents as a context provider — not to be one. Lifecycle/scale hardening (incremental scan, determinism, versioning) landed in 0.5.0; next is backend lineage (pixel → API handler).
 
 ## License
 

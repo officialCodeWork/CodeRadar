@@ -1,0 +1,36 @@
+# CodeRadar scale benchmark (TRACKER step 6.2, failure mode D3).
+#
+# Generates a ~2,000-file synthetic React app, scans it, and asserts the perf
+# budget: full scan under 5 minutes and peak RSS under 4 GB. Runs nightly so a
+# scaling regression fails loudly without slowing the per-PR CI. Also runnable
+# on demand via the Actions "Run workflow" button.
+
+name: Perf
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC nightly
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # reads the packageManager field
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Scale benchmark (budget-gated)
+        run: node eval/dist/bench.js --files 2000 --budget-seconds 300 --budget-rss-mb 4096

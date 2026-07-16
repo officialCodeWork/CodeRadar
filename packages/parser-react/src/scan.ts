@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,6 +19,7 @@ import {
 import {
   type ArrowFunction,
   type CallExpression,
+  FileSystemRefreshResult,
   type FunctionDeclaration,
   type FunctionExpression,
   type JsxOpeningElement,
@@ -147,23 +149,13 @@ const DEFAULT_FLAG_CALLEES = [
 /** Heuristic for role/permission guards classified as `role` conditions (3.5). */
 const ROLE_PATTERN = /\brole\b|\bisAdmin\b|\bisSuperuser\b|hasRole|hasPermission|\bcan\(|\bpermission|useRole|usePermission/i;
 
-/** Scan a directory of React source and produce a lineage graph. */
-export function scanReact(options: ScanOptions): LineageGraph {
-  const root = path.resolve(options.root);
-  const include = options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
-  const baseUrls = options.baseUrls ?? [];
-  const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
+/** The include globs a scan discovers source files with. */
+function scanInclude(options: ScanOptions): string[] {
+  return options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
+}
 
-  // Honor the scanned app's own tsconfig (6F.3, failure mode A5/C1): its
-  // baseUrl/paths make alias imports ("@ui") resolvable, which is the
-  // difference between linking an instance to its definition and dropping the
-  // usage entirely. File discovery stays ours (skipAddingFilesFromTsConfig).
-  const tsConfigFilePath = path.join(root, "tsconfig.json");
-  const project = new Project({
-    ...(fs.existsSync(tsConfigFilePath) ? { tsConfigFilePath } : {}),
-    compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
-    skipAddingFilesFromTsConfig: true,
-  });
+/** Add the source files matching the include globs (excluding node_modules and .d.ts). */
+function addProjectFiles(project: Project, root: string, include: string[]): void {
   for (const pattern of include) {
     project.addSourceFilesAtPaths([
       path.join(root, pattern),
@@ -171,6 +163,57 @@ export function scanReact(options: ScanOptions): LineageGraph {
       `!${path.join(root, "**/*.d.ts")}`,
     ]);
   }
+}
+
+/**
+ * Build the ts-morph project for a scan and load its files. Honors the scanned
+ * app's own tsconfig (6F.3, failure mode A5/C1): its baseUrl/paths make alias
+ * imports ("@ui") resolvable, the difference between linking an instance to its
+ * definition and dropping the usage. File discovery stays ours
+ * (skipAddingFilesFromTsConfig). Separated from analysis so an incremental
+ * re-scan (6.1) can keep one project alive and refresh only changed files.
+ */
+export function createScanProject(options: ScanOptions): { project: Project; root: string } {
+  const root = path.resolve(options.root);
+  const tsConfigFilePath = path.join(root, "tsconfig.json");
+  const project = new Project({
+    ...(fs.existsSync(tsConfigFilePath) ? { tsConfigFilePath } : {}),
+    compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
+    skipAddingFilesFromTsConfig: true,
+  });
+  addProjectFiles(project, root, scanInclude(options));
+  return { project, root };
+}
+
+/**
+ * Per-file content hashes (relative posix path → sha256) for every source file
+ * in a project (6.1). Populates `GraphMeta.fileHashes` so a later `--update`
+ * knows exactly which files changed. Sorted keys for deterministic output.
+ */
+export function projectFileHashes(project: Project, root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const sourceFile of sortedSourceFiles(project)) {
+    const rel = toPosix(path.relative(root, sourceFile.getFilePath()));
+    out[rel] = createHash("sha256").update(sourceFile.getFullText()).digest("hex");
+  }
+  return out;
+}
+
+/** Scan a directory of React source and produce a lineage graph. */
+export function scanReact(options: ScanOptions): LineageGraph {
+  const { project, root } = createScanProject(options);
+  return scanProject(project, root, options);
+}
+
+/**
+ * Run the full analysis over an already-built project (6.1). `scanReact` is
+ * `scanProject(createScanProject(...))`; the incremental scanner reuses the
+ * project across edits, so the result of an incremental update is byte-identical
+ * to a fresh full scan (every cross-file pass re-derives from current ASTs).
+ */
+export function scanProject(project: Project, root: string, options: ScanOptions): LineageGraph {
+  const baseUrls = options.baseUrls ?? [];
+  const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
 
   const wrappers = detectWrappers(project, options.apiWrappers ?? []);
   const localeTable = options.i18n !== undefined ? loadLocaleTable(root, options.i18n) : null;
@@ -187,9 +230,12 @@ export function scanReact(options: ScanOptions): LineageGraph {
   const stores = detectStores(project, root, nodes, addEdge, baseUrls, wrappers);
   /** Event node id → the handler expressions it wires, mined for effects (3.2). */
   const handlerExprs = new Map<string, Node[]>();
+  /** Files classified machine-generated (6.5, D5) — kept in lineage, excluded from matching. */
+  const generatedFiles = new Set<string>();
 
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
+    if (isGeneratedFile(file, sourceFile.getFullText())) generatedFiles.add(file);
     // Test files are swept separately (5.4) — they exercise components, they
     // don't define the app's UI, so they must not produce component/hook nodes.
     if (isTestFile(file)) continue;
@@ -267,18 +313,99 @@ export function scanReact(options: ScanOptions): LineageGraph {
     if (openApi !== null) linkOpenApiResponses(nodes, openApi);
   }
 
+  // Mark nodes defined in machine-generated files (6.5, D5). Done as a post-pass
+  // so it covers function components, class components, and hooks uniformly
+  // regardless of which extractor emitted them. The `generated` flag is what the
+  // matcher reads to keep these out of candidate ranking while leaving their
+  // data-source lineage intact.
+  if (generatedFiles.size > 0) {
+    for (const node of nodes.values()) {
+      if ((node.kind === "component" || node.kind === "hook") && generatedFiles.has(node.loc.file)) {
+        node.flags = [...(node.flags ?? []), "generated"];
+      }
+    }
+  }
+
   return {
     version: 2,
     root,
     generatedAt: new Date().toISOString(),
-    generator: "ui-lineage@0.4.1",
-    nodes: [...nodes.values()],
-    edges,
+    generator: "ui-lineage@0.5.0",
+    // Canonical output order (6.3, G8): sort nodes and edges by stable keys so
+    // the serialized graph is byte-identical across runs and machines. Node ids
+    // are unique; edges are keyed by every identifying field. The query side
+    // addresses nodes by id, so array order carries no semantics — only
+    // reproducibility.
+    nodes: [...nodes.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    edges: edges.sort((a, b) => {
+      const ka = edgeSortKey(a);
+      const kb = edgeSortKey(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    }),
   };
+}
+
+/** Total-order key over an edge's identifying fields (6.3, G8). */
+function edgeSortKey(e: LineageEdge): string {
+  return [e.kind, e.from, e.to, e.via ?? "", e.condition?.kind ?? "", e.condition?.expression ?? ""].join(
+    " ",
+  );
 }
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
+}
+
+/**
+ * Source files in a stable path order (6.3, G8). ts-morph returns files in glob
+ * enumeration order, which varies across platforms and filesystems; every pass
+ * that builds nodes/edges must iterate deterministically so two scans of the
+ * same tree agree byte-for-byte.
+ */
+function sortedSourceFiles(project: Project): SourceFile[] {
+  return [...project.getSourceFiles()].sort((a, b) => {
+    const pa = a.getFilePath();
+    const pb = b.getFilePath();
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
+  });
+}
+
+/**
+ * Codegen path shapes (6.5, D5): a `__generated__/` or `generated/` directory
+ * segment, or a `.generated.` / `.gen.` filename infix. Case-insensitive.
+ */
+const GENERATED_PATH = /(^|\/)(__generated__|generated)(\/|$)|\.(generated|gen)\.[jt]sx?$/i;
+
+/**
+ * Banner comments codegen tools emit at the top of a file: the `@generated`
+ * docblock tag, the Go-style "Code generated … DO NOT EDIT" line, or a bare
+ * "DO NOT EDIT" / "AUTO-GENERATED" marker.
+ */
+const GENERATED_BANNER = /@generated\b|DO NOT EDIT|AUTO-?GENERATED/i;
+
+/** A single line this long is a sourcemap-less minified bundle, not authored source. */
+const MINIFIED_LINE = 3000;
+
+/**
+ * True when a file is machine-generated (6.5, D5) — by path shape, a top-of-file
+ * banner, or minification. Generated code is retained in the graph as lineage /
+ * API metadata but excluded from match candidates: it is not authored UI, so a
+ * screenshot or ticket should never resolve to it.
+ */
+function isGeneratedFile(relPath: string, text: string): boolean {
+  if (GENERATED_PATH.test(relPath)) return true;
+  // Banners live in the first lines; only scan the head so a stray "DO NOT EDIT"
+  // deep in a hand-written file doesn't misclassify it.
+  if (GENERATED_BANNER.test(text.slice(0, 2000))) return true;
+  // Minified: any single line past the threshold. Real source wraps long before.
+  let lineStart = 0;
+  for (let i = 0; i <= text.length; i += 1) {
+    if (i === text.length || text.charCodeAt(i) === 10 /* \n */) {
+      if (i - lineStart >= MINIFIED_LINE) return true;
+      lineStart = i + 1;
+    }
+  }
+  return false;
 }
 
 /** Spread helper: emit a `responseType` field only when one was recovered (5.5). */
@@ -1093,7 +1220,7 @@ function detectStores(
   };
 
   // Pass 1: slices, zustand stores, thunks.
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     const file = toPosix(path.relative(root, sourceFile.getFilePath()));
     for (const variable of sourceFile.getVariableDeclarations()) {
       const init = variable.getInitializer();
@@ -1167,7 +1294,7 @@ function detectStores(
   }
 
   // Pass 2: thunk → slice associations via extraReducers addCase(thunk.fulfilled).
-  for (const sourceFile of project.getSourceFiles()) {
+  for (const sourceFile of sortedSourceFiles(project)) {
     for (const access of sourceFile.getDescendantsOfKind(SyntaxKind.PropertyAccessExpression)) {
       if (!["fulfilled", "rejected", "pending"].includes(access.getName())) continue;
       const thunkName = access.getExpression().getText();
@@ -2268,14 +2395,104 @@ export function resolveHookEdges(graph: LineageGraph): LineageGraph {
     if (node.kind === "hook") hooksByName.set(node.name, node.id);
   }
   const edges: LineageEdge[] = [];
+  const seen = new Set<string>();
+  const push = (edge: LineageEdge): void => {
+    // Rewriting placeholders can collide two edges onto the same hook id;
+    // dedup by full key so the result stays canonical (6.3, G8).
+    const key = edgeSortKey(edge);
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
   for (const edge of graph.edges) {
     if (edge.to.startsWith("unresolved-hook:")) {
       const target = hooksByName.get(edge.to.slice("unresolved-hook:".length));
-      if (target !== undefined) edges.push({ ...edge, to: target });
+      if (target !== undefined) push({ ...edge, to: target });
       // Unknown hooks (from libraries we don't model) are dropped.
     } else {
-      edges.push(edge);
+      push(edge);
     }
   }
+  // Rewritten `to` values may no longer be in the canonical order scanReact
+  // produced, so re-sort here — this is the graph the CLI and eval serialize.
+  edges.sort((a, b) => {
+    const ka = edgeSortKey(a);
+    const kb = edgeSortKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
   return { ...graph, edges };
+}
+
+/** Result of an incremental re-scan (6.1): the fresh graph and which files changed. */
+export interface IncrementalUpdate {
+  graph: LineageGraph;
+  /** Files whose on-disk content changed, were added, or were removed (relative posix). */
+  changed: string[];
+}
+
+/**
+ * A reusable scanner for incremental re-scans (TRACKER step 6.1, failure modes
+ * D1/G2). Keeps one ts-morph project alive; `update()` refreshes only the files
+ * that changed on disk (and picks up added/removed files), then re-runs the full
+ * analysis over the current ASTs.
+ *
+ * Correctness by construction: because every node and cross-file edge is
+ * re-derived from the current project state on each `update()`, the resulting
+ * graph is byte-identical to a fresh `scanReact` of the same tree — the
+ * "dependents" of a changed file (its parents' instance/prop-flow attribution,
+ * store writer↔reader links, route/journey wiring) are recomputed for free. The
+ * incremental win is parsing: unchanged files keep their cached ASTs, so only
+ * changed files are re-read and re-parsed. Intended for `scan --watch` and other
+ * long-lived processes.
+ */
+export class IncrementalScanner {
+  private readonly project: Project;
+  private readonly root: string;
+
+  constructor(private readonly options: ScanOptions) {
+    const { project, root } = createScanProject(options);
+    this.project = project;
+    this.root = root;
+  }
+
+  private rel(sourceFile: SourceFile): string {
+    return toPosix(path.relative(this.root, sourceFile.getFilePath()));
+  }
+
+  /** The current graph — the initial full scan, or the latest state after `update()`. */
+  scan(): LineageGraph {
+    return scanProject(this.project, this.root, this.options);
+  }
+
+  /** Per-file content hashes of the current project state (for GraphMeta, 6.1). */
+  fileHashes(): Record<string, string> {
+    return projectFileHashes(this.project, this.root);
+  }
+
+  /**
+   * Refresh changed/added/removed files from disk and return the new graph plus
+   * the list of files that changed. Re-reads only files whose content differs.
+   */
+  update(): IncrementalUpdate {
+    const changed: string[] = [];
+    // Refresh existing files; ts-morph re-parses only those whose bytes differ.
+    for (const sourceFile of this.project.getSourceFiles()) {
+      const rel = this.rel(sourceFile);
+      const result = sourceFile.refreshFromFileSystemSync();
+      if (result === FileSystemRefreshResult.Updated) {
+        changed.push(rel);
+      } else if (result === FileSystemRefreshResult.Deleted) {
+        changed.push(rel);
+        this.project.removeSourceFile(sourceFile);
+      }
+    }
+    // Pick up files created since the last scan (already-loaded paths are skipped).
+    const before = new Set(this.project.getSourceFiles().map((s) => s.getFilePath()));
+    addProjectFiles(this.project, this.root, scanInclude(this.options));
+    for (const sourceFile of this.project.getSourceFiles()) {
+      if (!before.has(sourceFile.getFilePath())) changed.push(this.rel(sourceFile));
+    }
+    changed.sort();
+    return { graph: this.scan(), changed };
+  }
 }

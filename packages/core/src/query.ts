@@ -135,7 +135,12 @@ export function matchComponents(
   if (queryTerms.length === 0 && descriptor === undefined) return declined("no-signal");
 
   const instancesByDefinition = groupInstances(graph);
-  const components = graph.nodes.filter((n): n is ComponentNode => n.kind === "component");
+  // Machine-generated components (6.5, D5) are excluded from the candidate pool
+  // — and therefore from the IDF corpus below — so a screenshot or ticket never
+  // resolves to codegen output. Their nodes/edges stay in the graph for tracing.
+  const components = graph.nodes.filter(
+    (n): n is ComponentNode => n.kind === "component" && !(n.flags?.includes("generated") ?? false),
+  );
 
   // Document frequency per token, for rarity (IDF) weighting.
   const documentFrequency = new Map<string, number>();
@@ -360,7 +365,10 @@ export function matchComponents(
     (a, b) =>
       b.score - a.score ||
       subtreeSize(a) - subtreeSize(b) ||
-      a.match.component.name.localeCompare(b.match.component.name),
+      a.match.component.name.localeCompare(b.match.component.name) ||
+      // Final tiebreak on the unique id so same-named components in different
+      // files rank deterministically (6.3, G8) rather than by scan order.
+      a.match.component.id.localeCompare(b.match.component.id),
   );
   const collapsed = new Set<string>();
   for (const s of scored) {

@@ -106,6 +106,66 @@ describe("buildBundle (TRACKER 5.2, F1)", () => {
   });
 });
 
+describe("buildBundle version skew (6.4, G3/A11)", () => {
+  // A card that renders "Invoice summary" — identical body across versions, so
+  // only the name/file distinguish the old graph from the current one.
+  function cardGraph(name: string, file: string): LineageGraph {
+    const component: ComponentNode = {
+      id: nodeId("component", file, name),
+      kind: "component",
+      name,
+      loc: loc(file),
+      exportName: name,
+      props: [],
+      renderedText: [{ text: "Invoice summary", source: "jsx" }],
+      rendersComponents: [],
+      structure: {
+        table: 0,
+        columns: 0,
+        form: 0,
+        input: 0,
+        button: 0,
+        link: 0,
+        image: 0,
+        heading: 1,
+        list: 0,
+        repeated: 0,
+      },
+    };
+    return {
+      version: 2,
+      root: "/app",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      generator: "test",
+      nodes: [component],
+      edges: [],
+    };
+  }
+
+  const resolved = cardGraph("InvoiceCard", "InvoiceCard.tsx");
+  const current = cardGraph("BillingCard", "BillingCard.tsx");
+  const ticket = { text: "the Invoice summary card is wrong" };
+
+  it("warns with the new name+file when the matched definition was renamed/moved", () => {
+    const bundle = buildBundle(resolved, ticket, { currentGraph: current, budgetTokens: 8000 });
+    expect(bundle.match[0]?.component).toBe("InvoiceCard");
+    const skew = bundle.warnings.find((w) => w.startsWith("version skew"));
+    expect(skew).toBeDefined();
+    expect(skew).toContain("`BillingCard`");
+    expect(skew).toContain("BillingCard.tsx");
+  });
+
+  it("emits no version-skew warning when the current graph is unchanged", () => {
+    const bundle = buildBundle(resolved, ticket, { currentGraph: resolved, budgetTokens: 8000 });
+    expect(bundle.warnings.some((w) => w.startsWith("version skew"))).toBe(false);
+  });
+
+  it("emits no version-skew warning when no current graph is provided", () => {
+    const bundle = buildBundle(resolved, ticket, { budgetTokens: 8000 });
+    expect(bundle.warnings.some((w) => w.startsWith("version skew"))).toBe(false);
+  });
+});
+
 describe("coverage-unmapped downgrade (TRACKER 6F.6, F3)", () => {
   // A graph where test files EXIST but almost none map to a component — the
   // field-found signature (tests present, ~0 covered-by edges). The matched

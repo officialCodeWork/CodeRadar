@@ -13,13 +13,15 @@ import {
   type LineageGraph,
   loadCorrections,
   loadGraph as loadGraphFile,
+  loadGraphFromStore,
   matchComponents,
   recordCorrection,
   saveGraph,
+  saveGraphToStore,
   traceLineage,
 } from "@coderadar/core";
 import { buildBundle, resolveContext } from "@coderadar/agent-sdk";
-import { resolveHookEdges, scanReact } from "@coderadar/parser-react";
+import { IncrementalScanner, resolveHookEdges, scanReact } from "@coderadar/parser-react";
 import { Command } from "commander";
 import { parse as parseYaml } from "yaml";
 
@@ -32,7 +34,7 @@ program
   .description(
     "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it.",
   )
-  .version("0.4.1");
+  .version("0.5.0");
 
 program
   .command("scan")
@@ -40,29 +42,66 @@ program
   .argument("<dir>", "directory to scan")
   .option("-o, --out <file>", "output file", "ui-lineage.graph.json")
   .option("--openapi <file>", "OpenAPI 3 JSON spec (relative to <dir>) for response-schema linking")
-  .action((dir: string, opts: { out: string; openapi?: string }) => {
-    const meta = collectGraphMeta(path.resolve(dir));
-    const graph = {
-      ...resolveHookEdges(scanReact({ root: dir, ...(opts.openapi ? { openapi: opts.openapi } : {}) })),
-      meta,
-    };
-    saveGraph(graph, opts.out);
-    const counts = new Map<string, number>();
-    for (const node of graph.nodes) {
-      counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
-    }
-    console.log(`Scanned ${path.resolve(dir)}`);
-    console.log(
-      `  commit: ${meta.commitSha ?? "not a git repo"}${meta.dirty ? " (dirty working tree)" : ""}`,
-    );
-    for (const [kind, count] of [...counts].sort()) console.log(`  ${kind}: ${count}`);
-    console.log(`  edges: ${graph.edges.length}`);
-    const incomplete = graph.nodes.filter((n) => n.flags?.includes("incomplete")).length;
-    if (incomplete > 0) {
-      console.log(`  incomplete: ${incomplete} node(s) could not be fully parsed`);
-    }
-    console.log(`Graph written to ${opts.out}`);
-  });
+  .option(
+    "--store",
+    "also save into the SHA-keyed store (.coderadar/graphs/<sha>.json + latest) for version-skew diffs (6.4)",
+  )
+  .option("--update", "incremental re-scan: skip work when no source file changed since --out (6.1)")
+  .option("--watch", "re-scan incrementally on every file change until interrupted (6.1)")
+  .action(
+    (
+      dir: string,
+      opts: { out: string; openapi?: string; store?: boolean; update?: boolean; watch?: boolean },
+    ) => {
+      const root = path.resolve(dir);
+      const scanOptions = { root: dir, ...(opts.openapi ? { openapi: opts.openapi } : {}) };
+      const scanner = new IncrementalScanner(scanOptions);
+      const currentHashes = scanner.fileHashes();
+
+      // Incremental short-circuit (6.1): if every source file hashes identically
+      // to the previous graph's provenance, the graph is already current.
+      if (opts.update === true && fs.existsSync(opts.out)) {
+        const prev = loadGraph(opts.out);
+        if (prev.meta?.fileHashes !== undefined && hashesEqual(prev.meta.fileHashes, currentHashes)) {
+          console.log(
+            `No changes — ${Object.keys(currentHashes).length} files unchanged; ${opts.out} is up to date.`,
+          );
+          return;
+        }
+        const changed = diffHashes(prev.meta?.fileHashes ?? {}, currentHashes);
+        if (changed.length > 0) console.log(`Changed: ${changed.join(", ")}`);
+      }
+
+      const emit = (graph: LineageGraph): void => {
+        saveGraph(graph, opts.out);
+        if (opts.store === true) {
+          const stored = saveGraphToStore(graph, root);
+          console.log(`  stored: ${stored}`);
+        }
+      };
+
+      const build = (): LineageGraph => ({
+        ...resolveHookEdges(scanner.scan()),
+        meta: { ...collectGraphMeta(root), fileHashes: scanner.fileHashes() },
+      });
+
+      const graph = build();
+      emit(graph);
+      const counts = new Map<string, number>();
+      for (const node of graph.nodes) counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
+      console.log(`Scanned ${root}`);
+      console.log(
+        `  commit: ${graph.meta?.commitSha ?? "not a git repo"}${graph.meta?.dirty ? " (dirty working tree)" : ""}`,
+      );
+      for (const [kind, count] of [...counts].sort()) console.log(`  ${kind}: ${count}`);
+      console.log(`  edges: ${graph.edges.length}`);
+      const incomplete = graph.nodes.filter((n) => n.flags?.includes("incomplete")).length;
+      if (incomplete > 0) console.log(`  incomplete: ${incomplete} node(s) could not be fully parsed`);
+      console.log(`Graph written to ${opts.out}`);
+
+      if (opts.watch === true) watchAndRescan(root, opts.out, scanner);
+    },
+  );
 
 program
   .command("find")
@@ -224,16 +263,38 @@ program
   .option("-g, --graph <file>", "graph file", "ui-lineage.graph.json")
   .option("-s, --screenshot", "the ticket has a screenshot attached")
   .option("-b, --budget <n>", "token budget", "4000")
-  .action((text: string, opts: { graph: string; screenshot?: boolean; budget: string }) => {
-    const graph = loadGraph(opts.graph);
-    const budgetTokens = Number.parseInt(opts.budget, 10);
-    const bundle = buildBundle(
-      graph,
-      { text, ...(opts.screenshot ? { screenshots: 1 } : {}) },
-      { budgetTokens: Number.isNaN(budgetTokens) ? 4000 : budgetTokens },
-    );
-    console.log(JSON.stringify(bundle, null, 2));
-  });
+  .option(
+    "--against <version>",
+    "diff the match against a stored graph version (a commit SHA or 'latest') to warn on renamed/moved definitions (6.4)",
+  )
+  .action(
+    (
+      text: string,
+      opts: { graph: string; screenshot?: boolean; budget: string; against?: string },
+    ) => {
+      const graph = loadGraph(opts.graph);
+      const budgetTokens = Number.parseInt(opts.budget, 10);
+      let currentGraph: LineageGraph | undefined;
+      if (opts.against !== undefined) {
+        try {
+          currentGraph = loadGraphFromStore(graph.root, opts.against);
+        } catch (err) {
+          console.error(`--against: ${(err as Error).message}`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      const bundle = buildBundle(
+        graph,
+        { text, ...(opts.screenshot ? { screenshots: 1 } : {}) },
+        {
+          budgetTokens: Number.isNaN(budgetTokens) ? 4000 : budgetTokens,
+          ...(currentGraph !== undefined ? { currentGraph } : {}),
+        },
+      );
+      console.log(JSON.stringify(bundle, null, 2));
+    },
+  );
 
 program
   .command("impact")
@@ -352,6 +413,56 @@ function loadGraph(file: string): LineageGraph {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
+}
+
+/** True when two file-hash maps describe the same set of files with the same contents (6.1). */
+function hashesEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => a[k] === b[k]);
+}
+
+/** Files added, removed, or with changed contents between two file-hash maps (6.1), sorted. */
+function diffHashes(prev: Record<string, string>, next: Record<string, string>): string[] {
+  const changed = new Set<string>();
+  for (const [file, hash] of Object.entries(next)) if (prev[file] !== hash) changed.add(file);
+  for (const file of Object.keys(prev)) if (next[file] === undefined) changed.add(file);
+  return [...changed].sort();
+}
+
+/** Watch a scanned tree and incrementally re-emit the graph on each change (6.1, --watch). */
+function watchAndRescan(root: string, out: string, scanner: IncrementalScanner): void {
+  const outAbs = path.resolve(out);
+  let timer: NodeJS.Timeout | undefined;
+  let running = false;
+  const rescan = (): void => {
+    if (running) return;
+    running = true;
+    try {
+      const { graph, changed } = scanner.update();
+      if (changed.length === 0) return;
+      saveGraph(
+        { ...resolveHookEdges(graph), meta: { ...collectGraphMeta(root), fileHashes: scanner.fileHashes() } },
+        out,
+      );
+      console.log(`updated (${changed.length} file${changed.length === 1 ? "" : "s"}): ${changed.join(", ")}`);
+    } catch (error) {
+      console.error(`watch rescan failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      running = false;
+    }
+  };
+  console.log("Watching for changes (Ctrl-C to stop)…");
+  fs.watch(root, { recursive: true }, (_event, filename) => {
+    if (filename === null) return;
+    const abs = path.resolve(root, filename.toString());
+    // Ignore our own outputs and vendor/store dirs to avoid feedback loops.
+    if (abs === outAbs || abs.includes(`${path.sep}node_modules${path.sep}`) || abs.includes(`${path.sep}.coderadar${path.sep}`)) {
+      return;
+    }
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(rescan, 120); // debounce editor save bursts
+  });
 }
 
 program.parse();

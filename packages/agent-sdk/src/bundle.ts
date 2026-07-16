@@ -12,6 +12,8 @@
 import {
   blastRadius,
   type DataSourceNode,
+  diffRenames,
+  findRename,
   type ImpactNode,
   type JourneyPath,
   journeys,
@@ -86,6 +88,13 @@ export interface BundleOptions {
   journeyDepth?: number;
   /** Max recent commits to include in the history section. Default 5. */
   historyLimit?: number;
+  /**
+   * The current-code graph (e.g. main) to diff the resolved match against for
+   * version skew (6.4, G3/A11). When the matched definition was renamed or
+   * moved in this graph, the bundle warns with the new name/path so the agent
+   * edits the right file. Omit when resolving against up-to-date code.
+   */
+  currentGraph?: LineageGraph;
 }
 
 /** Trim sections in this reverse-priority order until the bundle fits its budget. */
@@ -146,6 +155,24 @@ export function buildBundle(
 
   const top = match.candidates[0]?.value;
   if (top !== undefined) {
+    // Version skew (6.4, G3/A11): the match came from the resolved graph, which
+    // may lag the current code. If the top definition was renamed/moved on the
+    // current graph, surface the new identity so the agent edits the live file.
+    if (options.currentGraph !== undefined) {
+      const renamed = findRename(
+        diffRenames(graph, options.currentGraph),
+        top.component.name,
+        top.component.loc.file,
+      );
+      if (renamed !== undefined) {
+        const moved = renamed.to.file !== renamed.from.file;
+        bundle.warnings.push(
+          `version skew — matched \`${renamed.from.name}\` (${renamed.from.file}) in the resolved graph; ` +
+            `renamed \`${renamed.to.name}\`${moved ? ` (${renamed.to.file})` : ""} in the current graph`,
+        );
+      }
+    }
+
     const definitionLineage = traceLineage(graph, top.component.id).candidates[0]?.value;
     if (definitionLineage !== undefined) {
       bundle.lineage.push({
