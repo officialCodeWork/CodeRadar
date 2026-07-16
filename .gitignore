@@ -150,3 +150,6 @@ eval/scorecard.json
 
 # ui-lineage SHA-keyed graph store (6.4)
 .coderadar/
+
+# Scale benchmark synthetic app (6.2, generated/regenerable)
+eval/bench/
