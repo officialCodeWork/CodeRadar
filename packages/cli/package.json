@@ -1,6 +1,6 @@
 {
   "name": "ui-lineage",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it. Deterministic static analysis for React/TSX.",
   "license": "MIT",
   "type": "module",
