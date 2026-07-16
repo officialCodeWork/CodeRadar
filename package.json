@@ -14,6 +14,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "eval": "pnpm -r build && node eval/dist/run.js",
+    "bench": "pnpm -r build && node eval/dist/bench.js",
     "schemas": "pnpm --filter @coderadar/core schema"
   }
 }

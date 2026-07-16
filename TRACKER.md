@@ -5,8 +5,8 @@
 ## Status
 
 - **Current phase:** 6 — Lifecycle, scale, hardening (6F field-hardening done bar the data-blocked 6F.6 detection half)
-- **Next step:** 6.1 incremental re-scan, then 6.2 scale (bench repo) — the last two before Gate 6 is fully stamped. 6.3/6.4/6.5 landed (determinism gate, version-skew/rename tracking, generated-classification/PII). Publish 0.4.1 to the tester still pending (needs npm creds).
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.3, 6.4, 6.5** · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
+- **Next step:** 6.1 incremental re-scan — the last Phase 6 step before Gate 6 is fully stamped; its property test uses the 6.2 bench repo. 6.2/6.3/6.4/6.5 landed (scale bench + budget, determinism gate, version-skew/rename tracking, generated-classification/PII). Publish 0.4.1 to the tester still pending (needs npm creds).
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.2, 6.3, 6.4, 6.5** · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -318,10 +318,28 @@ The heart of the project. C1 and B1 live here.
 **Build:** per-file content hashes in `GraphMeta`; `scan --update` re-parses only changed files + dependents (import graph), rebuilds affected cross-file passes (instances/prop-flow are the tricky part — dependents include all parents of changed components). `--watch` mode for dev.
 **Accept:** correctness: incremental result deep-equals full re-scan on 20 randomized single-file edits of the bench repo (property test); 10-file change < 15 s.
 
-### [ ] 6.2 Scale & performance
+### [x] 6.2 Scale & performance
 **Failure modes:** D3
 **Build:** `eval/bench/` generator (2,000+ file synthetic app with realistic import depth); profile; apply: lazy ts-morph project loading, file-batch parallelism (worker threads), tree-sitter fast path for the text-extraction pass if ts-morph remains the bottleneck. Perf budget asserted in nightly CI.
 **Accept:** full scan < 5 min, peak RSS < 4 GB on the bench repo.
+**Done:** new `eval/src/bench.ts` deterministically generates a synthetic app
+(default ~2,016 files: N features × page → 8 sections → 8 atoms + a hook, with
+real import depth and a direct-`fetch` per section so the endpoint pass is
+exercised — 1,904 components / 896 data sources / 2,688 instances / 8,176 edges),
+scans it, and gates a perf budget (`--files` / `--budget-seconds` /
+`--budget-rss-mb`), measuring wall time and peak RSS via
+`process.resourceUsage().maxRSS`. **Measured: ~2,016 files in ~2 s, ~400 MB RSS**
+— vastly under the 300 s / 4 GB budget (the synthetic app has no tsconfig, so no
+type-resolution cost; the field Grafana run was 6,461 files in 72 s / 1.5 GB).
+Because ts-morph is nowhere near the bottleneck at target scale, the optional
+worker-thread / tree-sitter fast paths were **deliberately not applied** — they'd
+add complexity for no measured win; revisit if a future budget run regresses.
+Root `pnpm bench` script; nightly `.github/workflows/perf.yml` (schedule +
+manual dispatch) runs the budget-gated bench without slowing per-PR CI; the
+generated tree (`eval/bench/`) is gitignored and self-cleaned after each run.
+eval 317/0/0/0, determinism 1.000; typecheck + lint clean. **Gate 6 fully
+passes** once 6.1 lands (incremental re-scan uses this bench for its property
+test).
 
 ### [x] 6.3 Determinism
 **Failure modes:** G8
