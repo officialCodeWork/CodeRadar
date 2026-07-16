@@ -33,6 +33,7 @@ import {
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { decodeEntities } from "./entities.js";
+import { GRAPHQL_HOOKS, graphqlOperationFromArg } from "./graphql.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { linkOpenApiResponses, loadOpenApi, responseFromCall } from "./response.js";
 import { detectRoutes } from "./routes.js";
@@ -1009,6 +1010,23 @@ function detectDataSource(
       method: method !== undefined && HTTP_METHODS.has(method) ? method.toUpperCase() : null,
       ...resolveEndpoint(firstArg, baseUrls),
     };
+  }
+
+  // GraphQL (7.1, C4): Apollo/urql hooks reuse `useQuery`/`useMutation`, so this
+  // must run before the react-query branch — it only claims the call when the
+  // argument is an actual gql document (else it falls through to react-query).
+  if (GRAPHQL_HOOKS.has(callee)) {
+    const op = graphqlOperationFromArg(call.getArguments()[0]);
+    if (op !== null) {
+      const identity = op.name ?? op.rootFields[0] ?? "<anonymous>";
+      return {
+        sourceKind: "graphql",
+        method: op.type,
+        endpoint: identity,
+        raw: (call.getArguments()[0]?.getText() ?? callee).slice(0, 120),
+        resolved: op.name !== null ? "full" : op.rootFields.length > 0 ? "partial" : "none",
+      };
+    }
   }
 
   if (callee === "useQuery" || callee === "useMutation" || callee === "useInfiniteQuery") {
