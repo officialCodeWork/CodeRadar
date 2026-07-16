@@ -4,9 +4,9 @@
 
 ## Status
 
-- **Current phase:** 6 — Lifecycle, scale, hardening (6F field-hardening done bar the data-blocked 6F.6 detection half)
-- **Next step:** 6.1 incremental re-scan — the last Phase 6 step before Gate 6 is fully stamped; its property test uses the 6.2 bench repo. 6.2/6.3/6.4/6.5 landed (scale bench + budget, determinism gate, version-skew/rename tracking, generated-classification/PII). Publish 0.4.1 to the tester still pending (needs npm creds).
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.2, 6.3, 6.4, 6.5** · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
+- **Current phase:** 6 — Lifecycle, scale, hardening **COMPLETE** (Gate 6 passed, M6 reached). 6F field-hardening done bar the data-blocked 6F.6 detection half.
+- **Next step:** cut a release (0.5.0 — Phase 6 lifecycle/hardening) and publish to the tester (needs npm creds), or begin Phase 7 (backend parsers & federation). 6F.6 detection half still blocked on a real failing test file from the tester.
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.1–6.5 (Phase 6 complete)** · **0.4.1 prepared** (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -313,10 +313,38 @@ The heart of the project. C1 and B1 live here.
 
 ## Phase 6 — Lifecycle, scale, hardening
 
-### [ ] 6.1 Incremental re-scan
+### [x] 6.1 Incremental re-scan
 **Failure modes:** D1, G2
 **Build:** per-file content hashes in `GraphMeta`; `scan --update` re-parses only changed files + dependents (import graph), rebuilds affected cross-file passes (instances/prop-flow are the tricky part — dependents include all parents of changed components). `--watch` mode for dev.
 **Accept:** correctness: incremental result deep-equals full re-scan on 20 randomized single-file edits of the bench repo (property test); 10-file change < 15 s.
+**Done:** `scanReact` split into `createScanProject` (build + load the ts-morph
+project) and `scanProject` (the full analysis). New `IncrementalScanner` keeps
+one project alive; `update()` calls `refreshFromFileSystemSync` on each source
+file — ts-morph re-parses only files whose bytes changed — picks up added files
+and drops deleted ones, then re-runs `scanProject`. **Correctness by
+construction:** every node and cross-file edge is re-derived from the current
+ASTs each update, so an update's graph is byte-identical to a fresh full scan —
+the "dependents" problem (a changed component's parents' instance/prop-flow
+attribution, store/route/journey wiring) is handled for free because the global
+passes always re-run; the incremental win is parsing (unchanged files keep cached
+ASTs). Property test proves it: an interconnected app (pages → components → atoms
++ hook, cross-file imports/fetches) stays byte-identical to a full re-scan across
+**20 randomized single-file edits** (rendered text / endpoint / re-pointed
+cross-file import), plus add-file and delete-file cases with exact `changed`
+reporting. `GraphMeta.fileHashes` (relative path → sha256, schema regenerated,
+drift gate green) records provenance; `projectFileHashes` computes it.
+CLI: `scan --update` short-circuits when every file hashes identically to the
+prior graph (else reports the changed set and full-rescans, correct at ~2 s), and
+`scan --watch` re-emits the graph on each debounced file change (ignoring the
+output file, `node_modules`, `.coderadar`). Verified end-to-end via the CLI
+(--update no-change/changed, --watch live edit). eval 317/0/0/0, determinism
+1.000; full suite (parser-react 151), typecheck, lint green.
+
+**Gate 6 — PASSED.** Incremental (6.1) · scale bench < 5 min / < 4 GB, budget-
+gated nightly (6.2) · deterministic two-run byte-identity, eval-gated (6.3) ·
+version-skew/rename tracking (6.4) · generated/vendored classification + PII
+policy enforced (6.5). **M6 reached: production-grade — incremental, fast,
+deterministic, versioned.**
 
 ### [x] 6.2 Scale & performance
 **Failure modes:** D3
@@ -706,5 +734,5 @@ Sketch level — detail before starting the phase, after v1 feedback.
 | M4 | Screenshot/text → ranked, calibrated, honest matches | 4 |
 | M5 ✅ | **Pluggable node:** ticket in → budgeted context bundle out, over MCP | 5 |
 | M6F | Field-hardened: v0.3.0 feedback closed — trustworthy matching + real-world extractors + visualizer | 6F |
-| M6 | Production-grade: incremental, fast, deterministic, versioned | 6 |
+| M6 ✅ | **Production-grade:** incremental, fast, deterministic, versioned | 6 |
 | M7 | Full-stack lineage: pixel → backend handler | 7 |

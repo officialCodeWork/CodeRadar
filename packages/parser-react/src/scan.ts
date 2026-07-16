@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,6 +19,7 @@ import {
 import {
   type ArrowFunction,
   type CallExpression,
+  FileSystemRefreshResult,
   type FunctionDeclaration,
   type FunctionExpression,
   type JsxOpeningElement,
@@ -147,23 +149,13 @@ const DEFAULT_FLAG_CALLEES = [
 /** Heuristic for role/permission guards classified as `role` conditions (3.5). */
 const ROLE_PATTERN = /\brole\b|\bisAdmin\b|\bisSuperuser\b|hasRole|hasPermission|\bcan\(|\bpermission|useRole|usePermission/i;
 
-/** Scan a directory of React source and produce a lineage graph. */
-export function scanReact(options: ScanOptions): LineageGraph {
-  const root = path.resolve(options.root);
-  const include = options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
-  const baseUrls = options.baseUrls ?? [];
-  const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
+/** The include globs a scan discovers source files with. */
+function scanInclude(options: ScanOptions): string[] {
+  return options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
+}
 
-  // Honor the scanned app's own tsconfig (6F.3, failure mode A5/C1): its
-  // baseUrl/paths make alias imports ("@ui") resolvable, which is the
-  // difference between linking an instance to its definition and dropping the
-  // usage entirely. File discovery stays ours (skipAddingFilesFromTsConfig).
-  const tsConfigFilePath = path.join(root, "tsconfig.json");
-  const project = new Project({
-    ...(fs.existsSync(tsConfigFilePath) ? { tsConfigFilePath } : {}),
-    compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
-    skipAddingFilesFromTsConfig: true,
-  });
+/** Add the source files matching the include globs (excluding node_modules and .d.ts). */
+function addProjectFiles(project: Project, root: string, include: string[]): void {
   for (const pattern of include) {
     project.addSourceFilesAtPaths([
       path.join(root, pattern),
@@ -171,6 +163,57 @@ export function scanReact(options: ScanOptions): LineageGraph {
       `!${path.join(root, "**/*.d.ts")}`,
     ]);
   }
+}
+
+/**
+ * Build the ts-morph project for a scan and load its files. Honors the scanned
+ * app's own tsconfig (6F.3, failure mode A5/C1): its baseUrl/paths make alias
+ * imports ("@ui") resolvable, the difference between linking an instance to its
+ * definition and dropping the usage. File discovery stays ours
+ * (skipAddingFilesFromTsConfig). Separated from analysis so an incremental
+ * re-scan (6.1) can keep one project alive and refresh only changed files.
+ */
+export function createScanProject(options: ScanOptions): { project: Project; root: string } {
+  const root = path.resolve(options.root);
+  const tsConfigFilePath = path.join(root, "tsconfig.json");
+  const project = new Project({
+    ...(fs.existsSync(tsConfigFilePath) ? { tsConfigFilePath } : {}),
+    compilerOptions: { allowJs: true, jsx: 4 /* ReactJSX */ },
+    skipAddingFilesFromTsConfig: true,
+  });
+  addProjectFiles(project, root, scanInclude(options));
+  return { project, root };
+}
+
+/**
+ * Per-file content hashes (relative posix path → sha256) for every source file
+ * in a project (6.1). Populates `GraphMeta.fileHashes` so a later `--update`
+ * knows exactly which files changed. Sorted keys for deterministic output.
+ */
+export function projectFileHashes(project: Project, root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const sourceFile of sortedSourceFiles(project)) {
+    const rel = toPosix(path.relative(root, sourceFile.getFilePath()));
+    out[rel] = createHash("sha256").update(sourceFile.getFullText()).digest("hex");
+  }
+  return out;
+}
+
+/** Scan a directory of React source and produce a lineage graph. */
+export function scanReact(options: ScanOptions): LineageGraph {
+  const { project, root } = createScanProject(options);
+  return scanProject(project, root, options);
+}
+
+/**
+ * Run the full analysis over an already-built project (6.1). `scanReact` is
+ * `scanProject(createScanProject(...))`; the incremental scanner reuses the
+ * project across edits, so the result of an incremental update is byte-identical
+ * to a fresh full scan (every cross-file pass re-derives from current ASTs).
+ */
+export function scanProject(project: Project, root: string, options: ScanOptions): LineageGraph {
+  const baseUrls = options.baseUrls ?? [];
+  const flagCallees = new Set<string>([...DEFAULT_FLAG_CALLEES, ...(options.featureFlags ?? [])]);
 
   const wrappers = detectWrappers(project, options.apiWrappers ?? []);
   const localeTable = options.i18n !== undefined ? loadLocaleTable(root, options.i18n) : null;
@@ -305,7 +348,7 @@ export function scanReact(options: ScanOptions): LineageGraph {
 /** Total-order key over an edge's identifying fields (6.3, G8). */
 function edgeSortKey(e: LineageEdge): string {
   return [e.kind, e.from, e.to, e.via ?? "", e.condition?.kind ?? "", e.condition?.expression ?? ""].join(
-    " ",
+    " ",
   );
 }
 
@@ -2378,4 +2421,78 @@ export function resolveHookEdges(graph: LineageGraph): LineageGraph {
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
   return { ...graph, edges };
+}
+
+/** Result of an incremental re-scan (6.1): the fresh graph and which files changed. */
+export interface IncrementalUpdate {
+  graph: LineageGraph;
+  /** Files whose on-disk content changed, were added, or were removed (relative posix). */
+  changed: string[];
+}
+
+/**
+ * A reusable scanner for incremental re-scans (TRACKER step 6.1, failure modes
+ * D1/G2). Keeps one ts-morph project alive; `update()` refreshes only the files
+ * that changed on disk (and picks up added/removed files), then re-runs the full
+ * analysis over the current ASTs.
+ *
+ * Correctness by construction: because every node and cross-file edge is
+ * re-derived from the current project state on each `update()`, the resulting
+ * graph is byte-identical to a fresh `scanReact` of the same tree — the
+ * "dependents" of a changed file (its parents' instance/prop-flow attribution,
+ * store writer↔reader links, route/journey wiring) are recomputed for free. The
+ * incremental win is parsing: unchanged files keep their cached ASTs, so only
+ * changed files are re-read and re-parsed. Intended for `scan --watch` and other
+ * long-lived processes.
+ */
+export class IncrementalScanner {
+  private readonly project: Project;
+  private readonly root: string;
+
+  constructor(private readonly options: ScanOptions) {
+    const { project, root } = createScanProject(options);
+    this.project = project;
+    this.root = root;
+  }
+
+  private rel(sourceFile: SourceFile): string {
+    return toPosix(path.relative(this.root, sourceFile.getFilePath()));
+  }
+
+  /** The current graph — the initial full scan, or the latest state after `update()`. */
+  scan(): LineageGraph {
+    return scanProject(this.project, this.root, this.options);
+  }
+
+  /** Per-file content hashes of the current project state (for GraphMeta, 6.1). */
+  fileHashes(): Record<string, string> {
+    return projectFileHashes(this.project, this.root);
+  }
+
+  /**
+   * Refresh changed/added/removed files from disk and return the new graph plus
+   * the list of files that changed. Re-reads only files whose content differs.
+   */
+  update(): IncrementalUpdate {
+    const changed: string[] = [];
+    // Refresh existing files; ts-morph re-parses only those whose bytes differ.
+    for (const sourceFile of this.project.getSourceFiles()) {
+      const rel = this.rel(sourceFile);
+      const result = sourceFile.refreshFromFileSystemSync();
+      if (result === FileSystemRefreshResult.Updated) {
+        changed.push(rel);
+      } else if (result === FileSystemRefreshResult.Deleted) {
+        changed.push(rel);
+        this.project.removeSourceFile(sourceFile);
+      }
+    }
+    // Pick up files created since the last scan (already-loaded paths are skipped).
+    const before = new Set(this.project.getSourceFiles().map((s) => s.getFilePath()));
+    addProjectFiles(this.project, this.root, scanInclude(this.options));
+    for (const sourceFile of this.project.getSourceFiles()) {
+      if (!before.has(sourceFile.getFilePath())) changed.push(this.rel(sourceFile));
+    }
+    changed.sort();
+    return { graph: this.scan(), changed };
+  }
 }

@@ -367,6 +367,12 @@ export interface GraphMeta {
   commitSha: string | null;
   /** True when the working tree had uncommitted changes at scan time. */
   dirty: boolean;
+  /**
+   * Per-file content hashes (relative posix path → sha256), enabling an
+   * incremental re-scan (6.1) to detect exactly which files changed since this
+   * graph was produced. Absent on graphs scanned without `--update`/`--watch`.
+   */
+  fileHashes?: Record<string, string>;
 }
 
 export interface LineageGraph {
