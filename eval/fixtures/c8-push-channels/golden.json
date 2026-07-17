@@ -1,0 +1,18 @@
+{
+  "failureMode": "C8",
+  "note": "Push channels (7.3): server-push data arrives over a long-lived connection, not a request/response fetch. `new WebSocket(url)` becomes a websocket data source and `new EventSource(url)` an sse data source, each with the URL as its endpoint and a fetches-from edge from the component that opens it — so a component fed by a live channel shows that channel in its lineage.",
+  "expect": {
+    "components": [
+      { "name": "ChatPanel", "instances": 0 },
+      { "name": "NotificationsFeed", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "ChatPanel", "endpoints": ["wss://chat.example.com/socket"] },
+      { "component": "NotificationsFeed", "endpoints": ["/api/notifications/stream"] }
+    ],
+    "queries": [
+      { "terms": ["Team chat"], "status": "ok", "top": "ChatPanel" },
+      { "terms": ["Live notifications"], "status": "ok", "top": "NotificationsFeed" }
+    ]
+  }
+}
