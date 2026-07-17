@@ -151,6 +151,18 @@ const DEFAULT_FLAG_CALLEES = [
 /** Heuristic for role/permission guards classified as `role` conditions (3.5). */
 const ROLE_PATTERN = /\brole\b|\bisAdmin\b|\bisSuperuser\b|hasRole|hasPermission|\bcan\(|\bpermission|useRole|usePermission/i;
 
+/**
+ * Next.js pages-router server-data functions (7.2, C9). These run on the server
+ * and fetch the data the page renders; their fetches feed the file's default-
+ * export page component, so they are attributed to it (they are not components
+ * or hooks, so the normal body walk skips them).
+ */
+const NEXT_DATA_FNS: ReadonlySet<string> = new Set([
+  "getServerSideProps",
+  "getStaticProps",
+  "getStaticPaths",
+]);
+
 /** The include globs a scan discovers source files with. */
 function scanInclude(options: ScanOptions): string[] {
   return options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
@@ -241,13 +253,22 @@ export function scanProject(project: Project, root: string, options: ScanOptions
     // Test files are swept separately (5.4) — they exercise components, they
     // don't define the app's UI, so they must not produce component/hook nodes.
     if (isTestFile(file)) continue;
+    // The file's default-export page and any Next.js server-data functions,
+    // resolved together so the latter's fetches attribute to the former (7.2).
+    let pageComponentId: string | undefined;
+    const nextDataFns: { name: string; fn: Node }[] = [];
     for (const decl of collectDeclarations(sourceFile, file)) {
+      if (NEXT_DATA_FNS.has(decl.name)) {
+        nextDataFns.push({ name: decl.name, fn: decl.fn });
+        continue;
+      }
       const isComponent = COMPONENT_NAME.test(decl.name) && returnsJsx(decl.fn);
       const isHook = HOOK_NAME.test(decl.name);
       if (!isComponent && !isHook) continue;
 
       const kind = isComponent ? "component" : "hook";
       const id = nodeId(kind, file, decl.name);
+      if (isComponent && decl.exportName === "default") pageComponentId = id;
 
       if (isComponent) {
         // Portal components (A9): rendered into document.body etc., far from
@@ -277,6 +298,16 @@ export function scanProject(project: Project, root: string, options: ScanOptions
       }
 
       extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
+    }
+
+    // Next.js server data (7.2, C9): a page's getServerSideProps/getStaticProps
+    // fetches on the server; those data sources feed the default-export page,
+    // so attribute them to it. (RSC async server components fetch in their own
+    // body and are already covered by the walk above.)
+    if (pageComponentId !== undefined) {
+      for (const { name, fn } of nextDataFns) {
+        extractBodyFacts(name, fn, pageComponentId, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
+      }
     }
 
     scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores, handlerExprs, flagCallees);

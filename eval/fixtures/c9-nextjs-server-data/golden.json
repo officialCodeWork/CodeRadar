@@ -1,0 +1,21 @@
+{
+  "failureMode": "C9",
+  "note": "Next.js server data (7.2): server-side data fetching feeds a page even though the fetch is not in the component body. An async RSC server component fetches inline (already covered), while pages-router getServerSideProps/getStaticProps run separately from the page — their fetches are attributed to the file's default-export page component so its lineage shows the data it renders.",
+  "expect": {
+    "components": [
+      { "name": "DashboardPage", "instances": 0 },
+      { "name": "ReportsPage", "instances": 0 },
+      { "name": "BlogPage", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "DashboardPage", "endpoints": ["/api/dashboard/summary"] },
+      { "component": "ReportsPage", "endpoints": ["/api/reports/latest"] },
+      { "component": "BlogPage", "endpoints": ["/api/posts"] }
+    ],
+    "queries": [
+      { "terms": ["Dashboard totals"], "status": "ok", "top": "DashboardPage" },
+      { "terms": ["Report viewer"], "status": "ok", "top": "ReportsPage" },
+      { "terms": ["Blog index"], "status": "ok", "top": "BlogPage" }
+    ]
+  }
+}
