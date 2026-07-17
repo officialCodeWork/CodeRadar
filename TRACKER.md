@@ -4,9 +4,9 @@
 
 ## Status
 
-- **Current phase:** 6 — Lifecycle, scale, hardening **COMPLETE** (Gate 6 passed, M6 reached). 6F field-hardening done bar the data-blocked 6F.6 detection half.
-- **Next step:** publish 0.5.0 to npm (needs the user's creds — `npm publish`), then the tester re-validates via `ui-lineage-mcp`. After that, Phase 7 (backend parsers & federation) — detail the sketch after v1 feedback. 6F.6 detection half still blocked on a real failing test file from the tester.
-- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.1–6.5 (Phase 6 complete)** · **0.5.0 prepared** (all packages + generator/CLI/MCP version strings bumped, README changelog; `npm pack` verified; publish pending user's npm creds) (all packages bumped, changelog + version strings, `npm pack` → ui-lineage-0.4.1.tgz verified: both bins, no @coderadar leak; publish to npm pending). 0.4.0 tagged/merged earlier. **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
+- **Current phase:** 7 — Backend parsers & federation (v2 horizon). Phase 6 complete (Gate 6, M6). **0.5.0 published to npm.**
+- **Next step:** 7.2 Next.js server data, or hold the rest of Phase 7 for 0.5.0 tester feedback (7.2–7.6 are still sketch-level — detail each before building). 7.1 GraphQL adapter landed. 6F.6 detection half still blocked on a real failing test file from the tester.
+- **Done:** 0.1–0.4, 1.1–1.6, 2.1–2.5, 3.1–3.6, 4.1–4.6, 5.1–5.7, 6F.1–6F.5, 6F.7–6F.10 + 6F.6 (defensive half), **6.1–6.5 (Phase 6 complete)**, **7.1 (GraphQL adapter)** · **0.5.0 released & published to npm** (tag v0.5.0; both bins verified via `npm pack`). **Self-validated on Grafana frontend** (6,461 files, 15,334 nodes / 18,367 edges in 72 s): 55 RTK-query data sources, 32 routes, 1,009 coverage edges, gibberish declines — all previously 0/1 in the field run.
 - **Gates passed:** Gate 0 (CI + red-path, #5/#6) · Gate 1 (precision 1.000, recall 0.895, zero poison) · Gate 2 (C1 instance attribution 1.000 · B1 4-level handler chains · C6 store writers↔readers · A9 portals — scorecard 137/0/0, precision & recall 1.000) · Gate 3 (B3 action effects · B4 routers · B6 cyclic journeys terminate · B7/B8 form & non-JSX events · G5 flag/role conditions — precision & recall 1.000) · Gate 4 (A4 rarity · A10 fuzzy/OCR · A1 structural · A6 subtree · E3 vision annotations · E2 aliases · G4 corrections — high-conf correct 1.000, ambiguity honesty 1.000, poison rate 0.000) · Gate 5 (F1 context bundle · F2 blast radius · F3 test coverage · F4 response schema · F5 git history · MCP server over stdio — scorecard 265/0/0, all honesty metrics 1.000; **M5 reached** — ticket in → budgeted context bundle out, over MCP)
 
 ## What CodeRadar is
@@ -705,10 +705,14 @@ formally stamped: 6F.6 test-coverage hardening (blocked on a real failing sample
 
 ## Phase 7 — Backend parsers & federation (v2 horizon)
 
-Sketch level — detail before starting the phase, after v1 feedback.
+Sketch level for 7.2–7.6 — detail each before starting, after v1 feedback.
 
-- **7.1 GraphQL adapter** (C4): operations/fragments as data sources; codegen types feed 5.5.
-- **7.2 Next.js server data** (C9): RSC async components, `getServerSideProps`, server actions as first-class data sources.
+### [x] 7.1 GraphQL adapter
+**Failure modes:** C4
+**Build:** recognize GraphQL operations a component runs (Apollo/urql/graphql-request `useQuery`/`useMutation`/`useSubscription`/`useLazyQuery` with a `gql`/`graphql` tagged-template argument, inline or a resolved const) and emit them as data sources: operation NAME as identity, operation TYPE as method.
+**Accept:** fixture with query/mutation/subscription operations (imported const + inline tag) → one `graphql` data source each with the right method and a `fetches-from` edge; react-query `useQuery`/`useMutation` (non-gql arg) still classify as react-query.
+**Done:** new `graphql.ts` — `parseGraphqlOperation` reads the operation type/name (+ root selection fields as an anonymous-op fallback) from a gql document, ignoring `#` comments and handling shorthand `{ … }`; `graphqlOperationFromArg` resolves a hook's first argument to an operation (inline tagged template, or an identifier followed via `getDefinitionNodes()` so an imported/co-located gql const resolves cross-file). `detectDataSource` gains a GraphQL branch **before** the react-query branch (Apollo/urql reuse `useQuery`/`useMutation`, so it only claims the call when the argument is an actual gql document, else falls through). Emits `sourceKind: "graphql"`, `method` = query/mutation/subscription, `endpoint` = operation name (the value federation/attribution join on) — reusing the existing data-source node + `fetches-from` wiring, no schema change (`graphql` was already a `DataSourceKind`). New fixture `c4-graphql` (imported-const `useQuery`/`useMutation` + inline `useSubscription`); 9 unit tests incl. the react-query disambiguation on the c5 fixture. eval 326/0/0/0, determinism 1.000, all metrics 1.000; typecheck + lint clean. **Codegen response types (feeding 5.5) deferred** — needs a `.graphql`/codegen fixture; the operation→data-source spine is what unblocks federation.
+### [ ] 7.2 Next.js server data (C9): RSC async components, `getServerSideProps`, server actions as first-class data sources.
 - **7.3 Push channels** (C8): WebSocket/SSE subscription nodes.
 - **7.4 Python backend parser** (C10, G6): FastAPI/Django route decorators → `ServesNode{ method, pattern }`; tree-sitter based, emits the same LineageGraph JSON.
 - **7.5 Go backend parser**: mux/gin/echo handler registration → `ServesNode`.
