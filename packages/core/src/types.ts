@@ -162,6 +162,7 @@ export type DataSourceKind =
   | "swr"
   | "graphql"
   | "websocket"
+  | "sse"
   | "unknown";
 
 /** How much of an endpoint was statically resolvable. */

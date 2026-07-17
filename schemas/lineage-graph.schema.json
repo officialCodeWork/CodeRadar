@@ -467,6 +467,7 @@
         "swr",
         "graphql",
         "websocket",
+        "sse",
         "unknown"
       ]
     },

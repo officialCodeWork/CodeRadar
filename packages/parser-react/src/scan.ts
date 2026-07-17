@@ -34,6 +34,7 @@ import {
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { decodeEntities } from "./entities.js";
 import { GRAPHQL_HOOKS, graphqlOperationFromArg } from "./graphql.js";
+import { detectPushChannel } from "./pushchannels.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { linkOpenApiResponses, loadOpenApi, responseFromCall } from "./response.js";
 import { detectRoutes } from "./routes.js";
@@ -890,6 +891,31 @@ function extractBodyFacts(
     if (HOOK_NAME.test(callee) && !callee.includes(".")) {
       // Cross-file resolution happens later; record the call by name.
       addEdge({ from: ownerId, to: `unresolved-hook:${callee}`, kind: "uses-hook" });
+    }
+  }
+
+  // Push channels (7.3, C8): new WebSocket(url) / new EventSource(url) are
+  // long-lived server-push data sources, not request/response fetches. A
+  // wrapper's own body carries a placeholder URL, so skip it like fetch sources.
+  if (!declIsWrapper) {
+    for (const expr of body.getDescendantsOfKind(SyntaxKind.NewExpression)) {
+      const channel = detectPushChannel(expr, baseUrls);
+      if (channel === null) continue;
+      const dsId = nodeId("data-source", file, `${channel.sourceKind}:${channel.endpoint}`);
+      if (!nodes.has(dsId)) {
+        nodes.set(dsId, {
+          id: dsId,
+          kind: "data-source",
+          name: channel.endpoint,
+          loc: locOf(expr, file),
+          sourceKind: channel.sourceKind,
+          method: channel.method,
+          endpoint: channel.endpoint,
+          raw: channel.raw,
+          resolved: channel.resolved,
+        });
+      }
+      addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
     }
   }
 
