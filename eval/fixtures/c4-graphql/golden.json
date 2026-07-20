@@ -1,0 +1,21 @@
+{
+  "failureMode": "C4",
+  "note": "GraphQL adapter (7.1): Apollo/urql operations become data sources keyed by operation NAME, with the operation TYPE (query/mutation/subscription) as the method. Covers an imported gql const via useQuery (GetUsers) and useMutation (CreateUser) — which share their hook names with react-query but are disambiguated by the gql document argument — and an inline gql tagged template via useSubscription (OnTick). Each running component gets a fetches-from edge to its operation.",
+  "expect": {
+    "components": [
+      { "name": "UsersPanel", "instances": 0 },
+      { "name": "InviteForm", "instances": 0 },
+      { "name": "LiveTicker", "instances": 0 }
+    ],
+    "attributions": [
+      { "component": "UsersPanel", "endpoints": ["GetUsers"] },
+      { "component": "InviteForm", "endpoints": ["CreateUser"] },
+      { "component": "LiveTicker", "endpoints": ["OnTick"] }
+    ],
+    "queries": [
+      { "terms": ["User directory"], "status": "ok", "top": "UsersPanel" },
+      { "terms": ["Invite teammate"], "status": "ok", "top": "InviteForm" },
+      { "terms": ["Live updates"], "status": "ok", "top": "LiveTicker" }
+    ]
+  }
+}

@@ -33,6 +33,8 @@ import {
 
 import { fetchMethod, resolveEndpoint, type ResolvedEndpoint, resolveStringValue } from "./endpoint.js";
 import { decodeEntities } from "./entities.js";
+import { GRAPHQL_HOOKS, graphqlOperationFromArg } from "./graphql.js";
+import { detectPushChannel } from "./pushchannels.js";
 import { i18nRenderedText, type I18nOptions, loadLocaleTable, type LocaleTable } from "./i18n.js";
 import { linkOpenApiResponses, loadOpenApi, responseFromCall } from "./response.js";
 import { detectRoutes } from "./routes.js";
@@ -149,6 +151,18 @@ const DEFAULT_FLAG_CALLEES = [
 /** Heuristic for role/permission guards classified as `role` conditions (3.5). */
 const ROLE_PATTERN = /\brole\b|\bisAdmin\b|\bisSuperuser\b|hasRole|hasPermission|\bcan\(|\bpermission|useRole|usePermission/i;
 
+/**
+ * Next.js pages-router server-data functions (7.2, C9). These run on the server
+ * and fetch the data the page renders; their fetches feed the file's default-
+ * export page component, so they are attributed to it (they are not components
+ * or hooks, so the normal body walk skips them).
+ */
+const NEXT_DATA_FNS: ReadonlySet<string> = new Set([
+  "getServerSideProps",
+  "getStaticProps",
+  "getStaticPaths",
+]);
+
 /** The include globs a scan discovers source files with. */
 function scanInclude(options: ScanOptions): string[] {
   return options.include ?? ["**/*.tsx", "**/*.jsx", "**/*.ts"];
@@ -239,13 +253,22 @@ export function scanProject(project: Project, root: string, options: ScanOptions
     // Test files are swept separately (5.4) — they exercise components, they
     // don't define the app's UI, so they must not produce component/hook nodes.
     if (isTestFile(file)) continue;
+    // The file's default-export page and any Next.js server-data functions,
+    // resolved together so the latter's fetches attribute to the former (7.2).
+    let pageComponentId: string | undefined;
+    const nextDataFns: { name: string; fn: Node }[] = [];
     for (const decl of collectDeclarations(sourceFile, file)) {
+      if (NEXT_DATA_FNS.has(decl.name)) {
+        nextDataFns.push({ name: decl.name, fn: decl.fn });
+        continue;
+      }
       const isComponent = COMPONENT_NAME.test(decl.name) && returnsJsx(decl.fn);
       const isHook = HOOK_NAME.test(decl.name);
       if (!isComponent && !isHook) continue;
 
       const kind = isComponent ? "component" : "hook";
       const id = nodeId(kind, file, decl.name);
+      if (isComponent && decl.exportName === "default") pageComponentId = id;
 
       if (isComponent) {
         // Portal components (A9): rendered into document.body etc., far from
@@ -275,6 +298,16 @@ export function scanProject(project: Project, root: string, options: ScanOptions
       }
 
       extractBodyFacts(decl.name, decl.fn, id, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
+    }
+
+    // Next.js server data (7.2, C9): a page's getServerSideProps/getStaticProps
+    // fetches on the server; those data sources feed the default-export page,
+    // so attribute them to it. (RSC async server components fetch in their own
+    // body and are already covered by the walk above.)
+    if (pageComponentId !== undefined) {
+      for (const { name, fn } of nextDataFns) {
+        extractBodyFacts(name, fn, pageComponentId, file, nodes, addEdge, baseUrls, wrappers, stores, handlerExprs, flagCallees);
+      }
     }
 
     scanClassComponents(sourceFile, file, nodes, addEdge, baseUrls, wrappers, localeTable, pendingInstances, stores, handlerExprs, flagCallees);
@@ -330,7 +363,7 @@ export function scanProject(project: Project, root: string, options: ScanOptions
     version: 2,
     root,
     generatedAt: new Date().toISOString(),
-    generator: "ui-lineage@0.5.0",
+    generator: "ui-lineage@0.6.0",
     // Canonical output order (6.3, G8): sort nodes and edges by stable keys so
     // the serialized graph is byte-identical across runs and machines. Node ids
     // are unique; edges are keyed by every identifying field. The query side
@@ -892,6 +925,31 @@ function extractBodyFacts(
     }
   }
 
+  // Push channels (7.3, C8): new WebSocket(url) / new EventSource(url) are
+  // long-lived server-push data sources, not request/response fetches. A
+  // wrapper's own body carries a placeholder URL, so skip it like fetch sources.
+  if (!declIsWrapper) {
+    for (const expr of body.getDescendantsOfKind(SyntaxKind.NewExpression)) {
+      const channel = detectPushChannel(expr, baseUrls);
+      if (channel === null) continue;
+      const dsId = nodeId("data-source", file, `${channel.sourceKind}:${channel.endpoint}`);
+      if (!nodes.has(dsId)) {
+        nodes.set(dsId, {
+          id: dsId,
+          kind: "data-source",
+          name: channel.endpoint,
+          loc: locOf(expr, file),
+          sourceKind: channel.sourceKind,
+          method: channel.method,
+          endpoint: channel.endpoint,
+          raw: channel.raw,
+          resolved: channel.resolved,
+        });
+      }
+      addEdge({ from: ownerId, to: dsId, kind: "fetches-from" });
+    }
+  }
+
   for (const attr of body.getDescendantsOfKind(SyntaxKind.JsxAttribute)) {
     const attrName = attr.getNameNode().getText();
     // <a href="https://…"> / <Link to="mailto:…"> — a link that leaves the app (B9).
@@ -1009,6 +1067,23 @@ function detectDataSource(
       method: method !== undefined && HTTP_METHODS.has(method) ? method.toUpperCase() : null,
       ...resolveEndpoint(firstArg, baseUrls),
     };
+  }
+
+  // GraphQL (7.1, C4): Apollo/urql hooks reuse `useQuery`/`useMutation`, so this
+  // must run before the react-query branch — it only claims the call when the
+  // argument is an actual gql document (else it falls through to react-query).
+  if (GRAPHQL_HOOKS.has(callee)) {
+    const op = graphqlOperationFromArg(call.getArguments()[0]);
+    if (op !== null) {
+      const identity = op.name ?? op.rootFields[0] ?? "<anonymous>";
+      return {
+        sourceKind: "graphql",
+        method: op.type,
+        endpoint: identity,
+        raw: (call.getArguments()[0]?.getText() ?? callee).slice(0, 120),
+        resolved: op.name !== null ? "full" : op.rootFields.length > 0 ? "partial" : "none",
+      };
+    }
   }
 
   if (callee === "useQuery" || callee === "useMutation" || callee === "useInfiniteQuery") {
