@@ -1,8 +1,17 @@
 {
   "name": "ui-lineage",
-  "version": "0.6.0",
-  "description": "Map UI components to their data sources and user journeys — trace any screenshot back to the code, APIs, state, and navigation behind it. Deterministic static analysis for React/TSX.",
+  "version": "0.6.1",
+  "description": "React & TypeScript static analysis that maps every UI component to the APIs, state, and events behind it — and serves that context to AI coding agents over MCP. Screenshot or ticket in; component, data lineage, user journeys, and blast radius out. Deterministic, no LLM in the core.",
   "license": "MIT",
+  "homepage": "https://github.com/officialCodeWork/CodeRadar#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/officialCodeWork/CodeRadar.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/officialCodeWork/CodeRadar/issues"
+  },
   "type": "module",
   "bin": {
     "ui-lineage": "dist/index.js",
@@ -28,13 +37,24 @@
   ],
   "keywords": [
     "react",
+    "typescript",
     "static-analysis",
+    "code-analysis",
     "data-lineage",
     "data-flow",
+    "dependency-graph",
+    "component-graph",
+    "impact-analysis",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-agents",
+    "codebase-context",
+    "llm",
+    "claude",
+    "user-journeys",
     "ast",
     "ts-morph",
-    "user-journeys",
-    "component-graph",
     "cli"
   ],
   "engines": {

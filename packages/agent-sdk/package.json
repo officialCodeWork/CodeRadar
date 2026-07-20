@@ -1,6 +1,6 @@
 {
   "name": "@coderadar/agent-sdk",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "resolveContext orchestrator — classifies a ticket and runs the matching engine. Deterministic, no LLM in the node. Bundled into the published ui-lineage package.",
   "license": "MIT",
