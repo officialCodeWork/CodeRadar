@@ -363,7 +363,7 @@ export function scanProject(project: Project, root: string, options: ScanOptions
     version: 2,
     root,
     generatedAt: new Date().toISOString(),
-    generator: "ui-lineage@0.6.0",
+    generator: "ui-lineage@0.6.1",
     // Canonical output order (6.3, G8): sort nodes and edges by stable keys so
     // the serialized graph is byte-identical across runs and machines. Node ids
     // are unique; edges are keyed by every identifying field. The query side

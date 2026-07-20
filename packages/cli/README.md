@@ -1,12 +1,27 @@
-# ui-lineage
+# ui-lineage — React data lineage & codebase context for AI coding agents
 
-**Map UI components to their data, journeys, and behavior** — trace any screenshot or ticket back to the code, APIs, state, events, and navigation behind it. Deterministic static analysis for React/TSX. No LLM in the core, no network calls.
+[![npm version](https://img.shields.io/npm/v/ui-lineage.svg)](https://www.npmjs.com/package/ui-lineage)
+[![npm downloads](https://img.shields.io/npm/dm/ui-lineage.svg)](https://www.npmjs.com/package/ui-lineage)
+[![license](https://img.shields.io/npm/l/ui-lineage.svg)](https://github.com/officialCodeWork/CodeRadar/blob/main/LICENSE)
+[![node](https://img.shields.io/node/v/ui-lineage.svg)](https://nodejs.org)
+
+**Map every UI component to the APIs, state, and events behind it** — trace any screenshot or Jira ticket back to the exact React component, its data lineage, user journeys, and blast radius. Deterministic **TypeScript static analysis**: no LLM in the core, no network calls, byte-identical output on every run.
+
+Ships an **[MCP server](#mcp-server)** (`ui-lineage-mcp`), so Claude Code, Cursor, Windsurf, or any Model Context Protocol client can query your codebase's data flow as structured context instead of re-reading files.
 
 `ui-lineage` scans a React codebase into a **lineage graph** and answers three questions:
 
 1. **match** — text or structure seen on screen → the component(s) that render it (rarity-weighted, fuzzy/OCR-tolerant, structure-aware, with business-vocab aliases and human corrections, and *calibrated* confidence).
 2. **trace** — a component → every API, state slice, and event that feeds it, *attributed per instance* (a shared `<DataTable>` reports `/api/users` on the Users page and `/api/invoices` on Invoices).
 3. **journeys** — a page → the user-action paths out of it (click → navigate → click…), lazily expanded and cycle-safe, with flag/role conditions.
+
+## Use it to
+
+- **Give an AI coding agent real context** — over MCP, so it edits the right component instead of guessing from file names.
+- **Answer "where does this number come from?"** — screenshot or UI text → component → the exact endpoint feeding it.
+- **Scope a change before making it** — blast radius of an API, component, or route across the whole app.
+- **Onboard onto an unfamiliar React codebase** — see which APIs feed which screens, and how users navigate between them.
+- **Triage a bug ticket** — text in, ranked components out, with confidence and evidence (or an honest "ambiguous").
 
 ## Install
 
