@@ -111,7 +111,15 @@ Turn a screenshot into `{ terms, structure, annotations }` and match it — term
 
 ## What it understands
 
-Endpoints (constants, templates, API wrappers, react-query/SWR), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
+Endpoints (constants, templates, API wrappers, react-query/SWR/RTK Query), GraphQL operations, WebSocket/SSE push channels, Next.js server-side data (RSC async components, `getServerSideProps`/`getStaticProps`), i18n text, cross-file instance trees & per-instance prop-flow, Redux/Zustand stores, portals/modals/toasts, React Router & Next.js routes, action effects (navigate/fetch/dispatch/setState), form libraries & non-JSX events (react-hook-form, `addEventListener`, hotkeys), and feature-flag/role conditions.
+
+## New in 0.6.0
+
+Wider data-source coverage — the graph now sees the ways modern React apps actually fetch, beyond REST calls in the component body:
+
+- **GraphQL** — Apollo/urql operations become data sources, keyed by operation name and typed by operation (`query` / `mutation` / `subscription`). Works with an inline `gql` tag or an imported/co-located `gql` const (resolved across files), and is disambiguated from react-query, which shares the `useQuery`/`useMutation` hook names.
+- **Push channels** — `new WebSocket(url)` and `new EventSource(url)` become `websocket` / `sse` data sources, so a component fed by a live channel shows that channel in its lineage.
+- **Next.js server data** — a page's server-side fetching is attributed to the page even when it isn't in the component body: pages-router `getServerSideProps` / `getStaticProps` / `getStaticPaths`, alongside app-router async RSC server components.
 
 ## New in 0.5.0
 
